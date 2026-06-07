@@ -1,4 +1,5 @@
 figma.showUI(__html__, { width: 400, height: 200 });
+figma.showUI(__html__, { visible: false })
 
 /**
  * Command Message Types
@@ -237,11 +238,16 @@ function sendData() {
     figma.ui.postMessage(payload);
 }
 
-// send initial state on load
-sendData();
+let sendTimeout = null;
+function debouncedSendData() {
+    clearTimeout(sendTimeout);
+    sendTimeout = setTimeout(sendData, 100);
+}
+
+figma.on("documentchange", debouncedSendData);
 
 // send on canvas changes
-figma.on("documentchange", sendData);
+// figma.on("documentchange", sendData);
 figma.on("selectionchange", sendData);
 figma.on("currentpagechange", sendData);
 

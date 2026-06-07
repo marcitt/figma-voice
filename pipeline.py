@@ -6,7 +6,6 @@ import requests
 import pyautogui
 from dotenv import load_dotenv
 from openai import OpenAI
-from system_prompt import get_system_prompt
 import time
 
 import websocket
@@ -17,6 +16,9 @@ client = OpenAI()
 history = []
 MAX_HISTORY = 10
 canvas_state = {}
+
+with open("system_prompt.txt") as f:
+    SYSTEM_PROMPT = f.read()
 
 # global
 ws = None
@@ -68,17 +70,18 @@ def handle_fixed_grammar(text):
 def llm_process_command(text):
     global history
 
-    history.append({"role": "user", "content": text})
+    history.append({"role": "user", "content": f"{text}. Respond in JSON"})
     if len(history) > MAX_HISTORY:
         history = history[-MAX_HISTORY:]
 
-    response = client.chat.completions.create(
+    response = client.responses.create(
         model="gpt-4o-mini",
-        temperature=0,
-        messages=[{"role": "system", "content": "hello"}, *history],
+        instructions=SYSTEM_PROMPT,
+        input=history,
+        text={"format": {"type": "json_object"}},
     )
 
-    reply = response.choices[0].message.content.strip()
+    reply = response.output_text.strip()
     history.append({"role": "assistant", "content": reply})
     print(f"\ncommand: {reply}\n")
     return reply

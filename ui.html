@@ -8,7 +8,28 @@
     <p id="status">Waiting...</p>
 
     <script>
-        const ws = new WebSocket("ws://localhost:8000/ws");
+        let ws;
+
+        function connect() {
+            ws = new WebSocket("ws://localhost:8000/ws");
+
+            ws.onopen = () => console.log("connected to backend");
+
+            // commands coming from backend - forward to code.js
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.command) {
+                    parent.postMessage({ pluginMessage: data.command }, "*");
+                }
+            };
+
+            ws.onclose = () => {
+                console.log("disconnected — retrying in 2s");
+                setTimeout(connect, 2000);
+            };
+        }
+
+        connect();
 
         document.getElementById("btn").onclick = () => {
             const query = document.getElementById("query").value;
@@ -23,14 +44,6 @@
             }
 
             parent.postMessage({ pluginMessage: message }, "*");
-        };
-
-        // commands coming from backend - forward to code.js
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.command) {
-                parent.postMessage({ pluginMessage: data.command }, "*");
-            }
         };
 
         // all messages from code.js handled here

@@ -15,13 +15,19 @@ def main():
     overlay = subprocess.Popen(["python", "overlay.py"])
     print(f"Overlay started — PID {overlay.pid}")
 
+    # start pipeline
+    pipeline = subprocess.Popen(["python", "pipeline.py"])
+    print(f"Pipeline started — PID {pipeline.pid}")
+
     try:
         fastapi.wait()
         overlay.wait()
+        pipeline.wait()
     except KeyboardInterrupt:
         print("Shutting down...")
         fastapi.terminate()
         overlay.terminate()
+        pipeline.terminate()
         sys.exit(0)
 
 
