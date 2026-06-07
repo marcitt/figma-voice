@@ -1,0 +1,22 @@
+name: figma-plugin
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - portaudio        
+  - pip:
+    - fastapi
+    - uvicorn
+    - openai
+    - python-dotenv
+    - opencv-python
+    - mss
+    - numpy
+    - pyobjc-framework-Quartz
+    - pyobjc-framework-ApplicationServices
+    - pyobjc-framework-Cocoa
+    - SpeechRecognition
+    - pyaudio
+    - faster-whisper
+    - requests

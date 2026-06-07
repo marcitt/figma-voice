@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <h3>Plugin running...</h3>
+    <input id="query" type="text" placeholder="command..." />
+    <button id="btn">Select</button>
+    <p id="status">Waiting...</p>
+
+    <script>
+        const ws = new WebSocket("ws://localhost:8000/ws");
+
+        document.getElementById("btn").onclick = () => {
+            const query = document.getElementById("query").value;
+            console.log(query);
+
+            let message;
+            try {
+                message = JSON.parse(query);
+            } catch {
+                console.error("Invalid JSON");
+                return;
+            }
+
+            parent.postMessage({ pluginMessage: message }, "*");
+        };
+
+        // commands coming from backend - forward to code.js
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.command) {
+                parent.postMessage({ pluginMessage: data.command }, "*");
+            }
+        };
+
+        // all messages from code.js handled here
+        window.onmessage = (event) => {
+            const msg = event.data.pluginMessage;
+            if (!msg) return;
+
+            // status messages from code.js - update UI
+            if (msg.type === "status") {
+                document.getElementById("status").innerText = msg.text;
+                return;
+            }
+
+            // canvas state from code.js → forward to backend
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(msg));
+            }
+        };
+    </script>
+</body>
+
+</html>
