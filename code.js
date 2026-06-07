@@ -255,38 +255,3 @@ setInterval(() => {
         sendData();
     }
 }, 500);
-
-// const ws = new WebSocket("ws://localhost:8000/ws");
-
-// ws.onmessage = async (event) => {
-//     const data = JSON.parse(event.data);
-//     if (data.command) await handleCommand(data.command);
-// };
-
-// function sendData() {
-//     if (ws.readyState !== WebSocket.OPEN) return;
-    
-//     const nodes = figma.currentPage.findAll(n => n.visible);
-//     const payload = {
-//         nodes: nodes.map(n => {
-//             const bbox = n.absoluteBoundingBox || { x: 0, y: 0, width: 0, height: 0 };
-//             return {
-//                 id: n.id,
-//                 name: n.name,
-//                 type: n.type,
-//                 x: bbox.x,
-//                 y: bbox.y,
-//                 width: bbox.width,
-//                 height: bbox.height
-//             };
-//         }),
-//         viewport: {
-//             x: figma.viewport.bounds.x,
-//             y: figma.viewport.bounds.y,
-//             zoom: figma.viewport.zoom
-//         },
-//         currently_selected_object: figma.currentPage.selection
-//     };
-
-//     ws.send(JSON.stringify(payload));
-// }
