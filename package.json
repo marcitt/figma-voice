@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@figma/eslint-plugin-figma-plugins": "^1.0.0",
+    "eslint": "^10.4.0",
+    "globals": "^17.6.0"
+  }
+}

@@ -1,23 +1,31 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# browsers have same-origin policy rule
-# a webpage can only make requests to the same domain it is served from
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow requests from any domain
-    allow_methods=["*"],  # allow any HTTP method (GET, POST etc)
-    allow_headers=["*"],  # allow any headers
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# track connected clients
+clients = []
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("Plugin connected")
-    while True:
-        data = await websocket.receive_json()
-        print(len(data))
-        print("end of data")
+    clients.append(websocket)
+    print(f"Client connected — {len(clients)} total")
+    try:
+        while True:
+            data = await websocket.receive_json()
+            print(f"Received data, broadcasting to {len(clients) - 1} other clients")
+            for client in clients:
+                if client != websocket:
+                    await client.send_json(data)
+    except WebSocketDisconnect:
+        clients.remove(websocket)
+        print(f"Client disconnected — {len(clients)} total")
