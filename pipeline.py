@@ -1,18 +1,20 @@
 import json
 import threading
-import subprocess
-import atexit
-import requests
 import pyautogui
 from dotenv import load_dotenv
 from openai import OpenAI
 import time
+import logging
 
 import websocket
 
-FAST_MODEL = "gpt-5-nano"
-REASONING_MODEL = "gpt-5-mini"
+logging.basicConfig(
+    filename="latency.log", level=logging.INFO, format="%(asctime)s %(message)s"
+)
+
+# FAST_MODEL = "gpt-5-nano"
 # REASONING_MODEL = "gpt-4o-mini"
+REASONING_MODEL = "gpt-5-mini"
 
 load_dotenv()
 client = OpenAI()
@@ -102,6 +104,45 @@ def llm_process_command(
     history.append({"role": "assistant", "content": reply})
     print(f"\ncommand: {reply}\n")
     return reply
+
+
+def handle_mouse_command(cmd):
+    # mouse control as fallback for UI interactions not possible via Figma API
+    action = cmd.get("action")
+
+    try:
+        if action == "move":
+            x = cmd.get("x")
+            y = cmd.get("y")
+            pyautogui.moveTo(x, y, duration=0.3)
+
+        elif action == "click":
+            x = cmd.get("x")
+            y = cmd.get("y")
+            pyautogui.click(x, y)
+
+        elif action == "double_click":
+            x = cmd.get("x")
+            y = cmd.get("y")
+            pyautogui.doubleClick(x, y)
+
+        elif action == "right_click":
+            x = cmd.get("x")
+            y = cmd.get("y")
+            pyautogui.rightClick(x, y)
+
+        elif action == "drag":
+            x1 = cmd.get("x1")
+            y1 = cmd.get("y1")
+            x2 = cmd.get("x2")
+            y2 = cmd.get("y2")
+            pyautogui.moveTo(x1, y1)
+            pyautogui.dragTo(x2, y2, duration=0.5)
+
+        print(f"mouse: {action} at ({cmd.get('x')}, {cmd.get('y')})")
+
+    except Exception as e:
+        print(f"mouse error: {e}")
 
 
 def parse_output(text_out):
