@@ -12,6 +12,7 @@ import websocket
 
 FAST_MODEL = "gpt-5-nano"
 REASONING_MODEL = "gpt-5-mini"
+# REASONING_MODEL = "gpt-4o-mini"
 
 load_dotenv()
 client = OpenAI()
@@ -78,10 +79,12 @@ def llm_process_command(
 ):
     global history
 
+    layer_names = [n["name"] for n in canvas_state.get("nodes", [])]
+
     if include_canvas:
         content = f"Canvas state: {canvas_state}\n\nCommand: {text}. Respond in JSON"
     else:
-        content = f"{text}. Respond in JSON"
+        content = f"Layer names: {layer_names}\n\nCommand: {text}. Respond in JSON"
 
     history.append({"role": "user", "content": content})
     if len(history) > MAX_HISTORY:
@@ -101,51 +104,60 @@ def llm_process_command(
     return reply
 
 
-def command_thread(text):
-
-    # check if the transcribed text matches the fixed gramamr
-    fixed_command = handle_fixed_grammar(text)
-
-    if fixed_command:
-        send_command(fixed_command)
-        return
-
-    # if the trasncribed text doesn't match the fixed grammar - process it with an LLM
-
-    # first try with fast model
-    text_out = llm_process_command(text, model=FAST_MODEL, include_canvas=True)
-
+def parse_output(text_out):
     try:
         json_data = json.loads(text_out)
     except json.JSONDecodeError:
         print(f"invalid json, skipping: {text_out}")
+        return None
+
+    if "REASONING" in json_data:
+        print(f"\nreasoning: {json_data['REASONING']}\n")
+
+    if "COMMAND" in json_data:
+        json_data = json_data["COMMAND"]
+
+    return json_data
+
+
+def command_thread(text):
+    fixed = handle_fixed_grammar(text)
+    if fixed:
+        send_command(fixed)
         return
 
+    # ROUTING:
+    # text_out = llm_process_command(text, model=FAST_MODEL, include_canvas=False)
+
+    # json_data = parse_output(text_out)
+    # if json_data is None:
+    #     return
+
     # effort = json_data.pop("effort", "low")
-    effort = "low"
 
-    # if nano couldn't handle it, retry with canvas state
-    if json_data.get("route") == "complex":
-        print("routing to complex...")
+    # if json_data.get("route") == "complex":
+    #     print(f"routing to complex (effort: {effort})...")
+    #     text_out = llm_process_command(
+    #         text,
+    #         model=REASONING_MODEL,
+    #         include_canvas=True,
+    #         effort=effort,
+    #         system_prompt=SYSTEM_PROMPT_REASONING,
+    #     )
+    #     json_data = parse_output(text_out)
+    #     if json_data is None:
+    #         return
 
-        text_out = llm_process_command(
-            text,
-            model=REASONING_MODEL,
-            include_canvas=True,
-            effort=effort,
-            system_prompt=SYSTEM_PROMPT_REASONING,
-        )
-        try:
-            json_data = json.loads(text_out)
-        except json.JSONDecodeError:
-            print(f"invalid json, skipping: {text_out}")
-            return
-
-        if "REASONING" in json_data:
-            print(json_data["REASONING"])
-
-        if "COMMAND" in json_data:
-            json_data = json_data["COMMAND"]
+    # WITHOUT ROUTING:
+    text_out = llm_process_command(
+        text,
+        model=REASONING_MODEL,
+        include_canvas=True,
+        system_prompt=SYSTEM_PROMPT_REASONING,
+    )
+    json_data = parse_output(text_out)
+    if json_data is None:
+        return
 
     send_command(json_data)
 
