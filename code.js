@@ -213,11 +213,49 @@ async function handleCommand(msg) {
     }
 }
 
+// function sendData() {
+//     const nodes = figma.currentPage.findAll(n => n.visible);
+//     const payload = {
+//         nodes: nodes.map(n => {
+//             const bbox = n.absoluteBoundingBox || { x: 0, y: 0, width: 0, height: 0 };
+//             return {
+//                 id: n.id,
+//                 name: n.name,
+//                 type: n.type,
+//                 x: bbox.x,
+//                 y: bbox.y,
+//                 width: bbox.width,
+//                 height: bbox.height
+//             };
+//         }),
+//         viewport: {
+//             x: figma.viewport.bounds.x,
+//             y: figma.viewport.bounds.y,
+//             zoom: figma.viewport.zoom
+//         },
+//         currently_selected_object: figma.currentPage.selection
+//     };
+//     figma.ui.postMessage(payload);
+// }
+
 function sendData() {
-    const nodes = figma.currentPage.findAll(n => n.visible);
+    const vp = figma.viewport.bounds;
+    const nodes = figma.currentPage.findAll(n => {
+        if (!n.visible) return false;
+        const bbox = n.absoluteBoundingBox;
+        if (!bbox) return false;
+        // check if node overlaps with viewport
+        return (
+            bbox.x < vp.x + vp.width &&
+            bbox.x + bbox.width > vp.x &&
+            bbox.y < vp.y + vp.height &&
+            bbox.y + bbox.height > vp.y
+        );
+    });
+
     const payload = {
         nodes: nodes.map(n => {
-            const bbox = n.absoluteBoundingBox || { x: 0, y: 0, width: 0, height: 0 };
+            const bbox = n.absoluteBoundingBox;
             return {
                 id: n.id,
                 name: n.name,
@@ -229,8 +267,10 @@ function sendData() {
             };
         }),
         viewport: {
-            x: figma.viewport.bounds.x,
-            y: figma.viewport.bounds.y,
+            x: vp.x,
+            y: vp.y,
+            width: vp.width,
+            height: vp.height,
             zoom: figma.viewport.zoom
         },
         currently_selected_object: figma.currentPage.selection
