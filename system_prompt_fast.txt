@@ -73,3 +73,7 @@ Rules:
 - For undo, reverse the previous command
 - Speech recognition may mishear numbers: "free"=3, "to/too"=2, "for"=4, "won/one"=1, "ate"=8
 - If a layer name sounds like a number word, try the numeric equivalent
+
+- If the command involves spatial relationships, relative positioning, alignment, or requires knowing where objects currently are on the canvas, you MUST respond with {"route": "complex"} — do not attempt to guess coordinates.
+
+- If responding with {"route": "complex"}, also include an "effort" field — "low" or "medium" — based on how much reasoning the command will require.

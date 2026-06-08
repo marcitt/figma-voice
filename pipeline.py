@@ -10,6 +10,9 @@ import time
 
 import websocket
 
+FAST_MODEL = "gpt-5-nano"
+REASONING_MODEL = "gpt-5-mini"
+
 load_dotenv()
 client = OpenAI()
 
@@ -17,8 +20,11 @@ history = []
 MAX_HISTORY = 10
 canvas_state = {}
 
-with open("system_prompt.txt") as f:
-    SYSTEM_PROMPT = f.read()
+with open("system_prompt_fast.txt") as f:
+    SYSTEM_PROMPT_FAST = f.read()
+
+with open("system_prompt_reasoning.txt") as f:
+    SYSTEM_PROMPT_REASONING = f.read()
 
 # global
 ws = None
@@ -67,16 +73,24 @@ def handle_fixed_grammar(text):
         return {"level": "system", "type": "overlay", "action": "toggle"}
 
 
-def llm_process_command(text):
+def llm_process_command(
+    text, model, include_canvas=False, effort="low", system_prompt=SYSTEM_PROMPT_FAST
+):
     global history
 
-    history.append({"role": "user", "content": f"{text}. Respond in JSON"})
+    if include_canvas:
+        content = f"Canvas state: {canvas_state}\n\nCommand: {text}. Respond in JSON"
+    else:
+        content = f"{text}. Respond in JSON"
+
+    history.append({"role": "user", "content": content})
     if len(history) > MAX_HISTORY:
         history = history[-MAX_HISTORY:]
 
     response = client.responses.create(
-        model="gpt-4o-mini",
-        instructions=SYSTEM_PROMPT,
+        model=model,
+        instructions=system_prompt,
+        reasoning={"effort": effort},
         input=history,
         text={"format": {"type": "json_object"}},
     )
@@ -97,13 +111,41 @@ def command_thread(text):
         return
 
     # if the trasncribed text doesn't match the fixed grammar - process it with an LLM
-    text_out = llm_process_command(text)
+
+    # first try with fast model
+    text_out = llm_process_command(text, model=FAST_MODEL, include_canvas=True)
 
     try:
         json_data = json.loads(text_out)
     except json.JSONDecodeError:
         print(f"invalid json, skipping: {text_out}")
         return
+
+    # effort = json_data.pop("effort", "low")
+    effort = "low"
+
+    # if nano couldn't handle it, retry with canvas state
+    if json_data.get("route") == "complex":
+        print("routing to complex...")
+
+        text_out = llm_process_command(
+            text,
+            model=REASONING_MODEL,
+            include_canvas=True,
+            effort=effort,
+            system_prompt=SYSTEM_PROMPT_REASONING,
+        )
+        try:
+            json_data = json.loads(text_out)
+        except json.JSONDecodeError:
+            print(f"invalid json, skipping: {text_out}")
+            return
+
+        if "REASONING" in json_data:
+            print(json_data["REASONING"])
+
+        if "COMMAND" in json_data:
+            json_data = json_data["COMMAND"]
 
     send_command(json_data)
 
