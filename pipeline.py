@@ -9,6 +9,9 @@ import websocket
 from dotenv import load_dotenv
 from openai import OpenAI
 
+import re
+from grid import NodeEdgeGrid
+
 from transcribers import GoogleTranscriber
 
 from config import REASONING_MODEL, MAX_HISTORY
@@ -73,6 +76,10 @@ def send_command(json_data):
 def handle_fixed_commands(text):
     text_lower = text.lower()
 
+    match = re.match(r"move (.+) to grid (\d+)", text_lower)
+    if match:
+        return handle_move_to_cell(match.group(1).strip(), int(match.group(2)))
+
     if "deselect everything" in text_lower:
         return {"type": "select", "query": []}
 
@@ -130,6 +137,41 @@ def handle_fuzzy_commands(
 
     print(f"\ncommand: {reply}\n")
     return reply
+
+
+def handle_move_to_cell(node_name, cell_number):
+    grid_data = NodeEdgeGrid().compute(canvas_state)
+
+    cell = next((c for c in grid_data.cells() if c["number"] == cell_number), None)
+    if not cell:
+        print(f"cell {cell_number} not found")
+        return None
+
+    print(f"looking for cell {cell_number}")
+    print(f"found cell: {cell}")
+
+    node = next(
+        (n for n in canvas_state.get("nodes", []) if n["name"].lower() == node_name),
+        None,
+    )
+
+    print(f"found node: {node}")
+
+    if not node:
+        print(f"node '{node_name}' not found")
+        return None
+
+    x = cell["cx"] - node["width"] / 2
+    y = cell["cy"] - node["height"] / 2
+    print(f"moving to x={x}, y={y}")
+
+    return {
+        "level": "figma",
+        "type": "move_absolute",
+        "query": node["name"],
+        "x": x,
+        "y": y,
+    }
 
 
 # Mouse control as fallback for UI interactions not possible via Figma API
