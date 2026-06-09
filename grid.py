@@ -25,18 +25,41 @@ class GridData:
     grid_type: str
     cell_size: Optional[float] = None
 
-    # def cells(self):
-    # result = []
-    # n = 1
-    # for j in range(len(self.y_lines) - 1):
-    #     for i in range(len(self.x_lines) - 1):
-    #         result.append({
-    #             "number": n,
-    #             "cx": (self.x_lines[i] + self.x_lines[i+1]) / 2,
-    #             "cy": (self.y_lines[j] + self.y_lines[j+1]) / 2,
-    #         })
-    #         n += 1
-    # return result
+    def cells(self):
+        result = []
+        n = 1
+        for j in range(len(self.y_lines) - 1):
+            for i in range(len(self.x_lines) - 1):
+                result.append(
+                    {
+                        "number": n,
+                        "cx": (self.x_lines[i] + self.x_lines[i + 1]) / 2,
+                        "cy": (self.y_lines[j] + self.y_lines[j + 1]) / 2,
+                        "canvas_w": self.x_lines[i + 1] - self.x_lines[i],
+                        "canvas_h": self.y_lines[j + 1] - self.y_lines[j],
+                    }
+                )
+                n += 1
+        return result
+
+    def visible_cells(self, zoom, min_w=10, min_h=10, min_area=40):
+        result = []
+        for c in self.cells():
+            screen_w = c["canvas_w"] * zoom
+            screen_h = c["canvas_h"] * zoom
+            screen_area = screen_w * screen_h
+            if screen_w >= min_w and screen_h >= min_h and screen_area >= min_area:
+                result.append(c)
+        return result
+
+
+def visible_cells(self, zoom, min_screen_size=40):
+    return [
+        c
+        for c in self.cells()
+        if c["canvas_w"] * zoom >= min_screen_size
+        and c["canvas_h"] * zoom >= min_screen_size
+    ]
 
 
 class FixedGrid:
@@ -102,6 +125,19 @@ class NodeEdgeGrid:
         x_coords = set()
         y_coords = set()
 
+        # viewport boundary lines
+        vp_x = vp.get("x", 0)
+        vp_y = vp.get("y", 0)
+        vp_w = CANVAS_W / vp.get("zoom", 1)
+        vp_h = CANVAS_H / vp.get("zoom", 1)
+        zoom = vp.get("zoom", 1)
+
+        x_coords.add(vp_x)
+        x_coords.add(vp_x + vp_w / zoom)
+        y_coords.add(vp_y)
+        y_coords.add(vp_y + vp_h / zoom)
+
+        # node lines
         for node in nodes:
             x_coords.add(node["x"])
             x_coords.add(node["x"] + node["width"])

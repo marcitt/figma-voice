@@ -58,9 +58,6 @@ class OverlayView(NSView):
         self.draw_node_labels(w, h, data)
 
     def draw_grid(self, data):
-
-        print("draw_grid called")
-
         vp = data.get("viewport", {})
         if not vp:
             return
@@ -69,10 +66,13 @@ class OverlayView(NSView):
         vp_x = vp.get("x", 0)
         vp_y = vp.get("y", 0)
 
-        # grid = FixedGrid(cell_size=100)
         grid = NodeEdgeGrid()
         grid_data = grid.compute(data)
-        print(f"grid lines: x={grid_data.x_lines[:3]}... y={grid_data.y_lines[:3]}...")
+
+        node_attrs = NSDictionary.dictionaryWithObjects_forKeys_(
+            [NSColor.redColor(), NSFont.boldSystemFontOfSize_(10)],
+            [NSForegroundColorAttributeName, NSFontAttributeName],
+        )
 
         NSColor.colorWithRed_green_blue_alpha_(1.0, 0.0, 0.0, 0.8).setStroke()
 
@@ -91,6 +91,13 @@ class OverlayView(NSView):
             path.moveToPoint_((0, sy))
             path.lineToPoint_((CANVAS_W, sy))
             path.stroke()
+
+        for cell in grid_data.visible_cells(zoom):
+            sx = (cell["cx"] - vp_x) * zoom
+            sx = sx - 4
+            sy = CANVAS_H - ((cell["cy"] - vp_y) * zoom)
+            label = NSString.stringWithString_(str(cell["number"]))
+            label.drawAtPoint_withAttributes_((sx, sy), node_attrs)
 
     def draw_node_labels(self, w, h, data):
         nodes = data.get("nodes", [])
