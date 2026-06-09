@@ -59,9 +59,11 @@ def ws_worker():
 
 # sends commands to the backend - the backend broadcasts it to all other connected clients
 def send_command(json_data):
+    print(json_data)
     if (
         ws and ws.sock and ws.sock.connected
     ):  # guard (please look into this in a bit more detail)
+        # print(f"sending:{json_data}")
         ws.send(json.dumps({"command": json_data}))
     else:
         print("ws not connected, command dropped")
@@ -70,6 +72,15 @@ def send_command(json_data):
 # COMMANDS THAT MATCH TEMPLATES
 def handle_fixed_commands(text):
     text_lower = text.lower()
+
+    if "deselect everything" in text_lower:
+        return {"type": "select", "query": []}
+
+    if "show grid" in text_lower:
+        return {"level": "system", "type": "grid", "action": "show"}
+
+    if "hide grid" in text_lower:
+        return {"level": "system", "type": "grid", "action": "hide"}
 
     if "show overlay" in text_lower or "open overlay" in text_lower:
         return {"level": "system", "type": "overlay", "action": "show"}
@@ -250,6 +261,8 @@ def dispatcher_worker():
 
 threading.Thread(target=ws_worker, daemon=True).start()
 time.sleep(0.5)  # give ws a moment to connect before other workers start
+
+text_queue.put("deselect everything")
 
 transcriber = GoogleTranscriber()
 # transcriber = FasterWhisperTranscriber()

@@ -25,10 +25,14 @@ from AppKit import (
 )
 from Quartz import CGRectMake, kCGScreenSaverWindowLevel
 
+from grid import FixedGrid, GridData, NodeEdgeGrid
+
 from config import CANVAS_TOP_LEFT_X, CANVAS_TOP_LEFT_Y, CANVAS_W, CANVAS_H
 
 # latest canvas state from plugin, updated by WebSocket listener
 latest_data = None
+
+show_grid = False
 
 
 def setup_quit_handler(app):
@@ -49,7 +53,44 @@ class OverlayView(NSView):
         if not data:
             return
 
+        if show_grid:
+            self.draw_grid(data)  # grid first
         self.draw_node_labels(w, h, data)
+
+    def draw_grid(self, data):
+
+        print("draw_grid called")
+
+        vp = data.get("viewport", {})
+        if not vp:
+            return
+
+        zoom = vp.get("zoom", 1)
+        vp_x = vp.get("x", 0)
+        vp_y = vp.get("y", 0)
+
+        # grid = FixedGrid(cell_size=100)
+        grid = NodeEdgeGrid()
+        grid_data = grid.compute(data)
+        print(f"grid lines: x={grid_data.x_lines[:3]}... y={grid_data.y_lines[:3]}...")
+
+        NSColor.colorWithRed_green_blue_alpha_(1.0, 0.0, 0.0, 0.8).setStroke()
+
+        for cx in grid_data.x_lines:
+            sx = (cx - vp_x) * zoom
+            path = NSBezierPath.bezierPath()
+            path.setLineWidth_(0.5)
+            path.moveToPoint_((sx, 0))
+            path.lineToPoint_((sx, CANVAS_H))
+            path.stroke()
+
+        for cy in grid_data.y_lines:
+            sy = CANVAS_H - ((cy - vp_y) * zoom)
+            path = NSBezierPath.bezierPath()
+            path.setLineWidth_(0.5)
+            path.moveToPoint_((0, sy))
+            path.lineToPoint_((CANVAS_W, sy))
+            path.stroke()
 
     def draw_node_labels(self, w, h, data):
         nodes = data.get("nodes", [])
@@ -87,16 +128,29 @@ class OverlayView(NSView):
 
 def ws_listener(view):
     async def listen():
-        global latest_data
+        global latest_data, show_grid
         async with websockets.connect("ws://localhost:8000/ws") as ws:
             print("Overlay connected to backend")
             while True:
                 data = json.loads(await ws.recv())
-                print(f"Received data: {len(data.get('nodes', []))} nodes")  # add this
-                latest_data = data
-                view.performSelectorOnMainThread_withObject_waitUntilDone_(
-                    "setNeedsDisplay:", True, False
-                )
+                print(f"overlay received: {data}")
+
+                # if data.type
+
+                if "command" in data:
+                    cmd = data["command"]
+                    print(cmd)
+                    if cmd.get("type") == "grid":
+                        show_grid = cmd.get("action") == "show"
+                        print(show_grid)
+                        view.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setNeedsDisplay:", True, False
+                        )
+                if "nodes" in data:
+                    latest_data = data
+                    view.performSelectorOnMainThread_withObject_waitUntilDone_(
+                        "setNeedsDisplay:", True, False
+                    )
 
     asyncio.run(listen())
 
