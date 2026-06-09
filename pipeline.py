@@ -16,6 +16,9 @@ from transcribers import GoogleTranscriber
 
 from config import REASONING_MODEL, MAX_HISTORY
 
+
+from spatial_commands import move_to_cell, move_edge_to_cell, resize_edge_to_cell
+
 logging.basicConfig(
     filename="latency.log", level=logging.INFO, format="%(asctime)s %(message)s"
 )
@@ -76,9 +79,35 @@ def send_command(json_data):
 def handle_fixed_commands(text):
     text_lower = text.lower()
 
-    match = re.match(r"move (.+) to grid (\d+)", text_lower)
+    match = re.match(r"move (.+) to (\d+)$", text_lower)
     if match:
-        return handle_move_to_cell(match.group(1).strip(), int(match.group(2)))
+        return move_to_cell(canvas_state, match.group(1).strip(), int(match.group(2)))
+
+    match = re.match(
+        r"move (.+) (north|south|east|west) to (\d+) (north|south|east|west)",
+        text_lower,
+    )
+    if match:
+        return move_edge_to_cell(
+            canvas_state,
+            match.group(1).strip(),
+            match.group(2),
+            int(match.group(3)),
+            match.group(4),
+        )
+
+    match = re.match(
+        r"resize (.+) (north|south|east|west) to (\d+) (north|south|east|west)",
+        text_lower,
+    )
+    if match:
+        return resize_edge_to_cell(
+            canvas_state,
+            match.group(1).strip(),
+            match.group(2),
+            int(match.group(3)),
+            match.group(4),
+        )
 
     if "deselect everything" in text_lower:
         return {"type": "select", "query": []}

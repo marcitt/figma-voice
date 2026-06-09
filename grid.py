@@ -30,13 +30,21 @@ class GridData:
         n = 1
         for j in range(len(self.y_lines) - 1):
             for i in range(len(self.x_lines) - 1):
+                x0 = self.x_lines[i]
+                x1 = self.x_lines[i + 1]
+                y0 = self.y_lines[j]
+                y1 = self.y_lines[j + 1]
                 result.append(
                     {
                         "number": n,
-                        "cx": (self.x_lines[i] + self.x_lines[i + 1]) / 2,
-                        "cy": (self.y_lines[j] + self.y_lines[j + 1]) / 2,
-                        "canvas_w": self.x_lines[i + 1] - self.x_lines[i],
-                        "canvas_h": self.y_lines[j + 1] - self.y_lines[j],
+                        "cx": (x0 + x1) / 2,
+                        "cy": (y0 + y1) / 2,
+                        "canvas_w": x1 - x0,
+                        "canvas_h": y1 - y0,
+                        "north": y0,
+                        "south": y1,
+                        "west": x0,
+                        "east": x1,
                     }
                 )
                 n += 1
