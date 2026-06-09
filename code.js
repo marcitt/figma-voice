@@ -148,6 +148,16 @@ async function handleCommand(msg) {
             break;
         }
 
+        case "resize_absolute": {
+            const node = figma.currentPage.findOne(n => n.name === msg.query);
+            if (node) {
+                node.x = msg.x;
+                node.y = msg.y;
+                node.resize(msg.width, msg.height);
+            }
+            break;
+        }
+
         case "create_rect": {
             // x, y: number - position; width?, height?: number - size (default 100)
             const rect = figma.createRectangle();
@@ -301,3 +311,5 @@ setInterval(() => {
         sendData();
     }
 }, 500);
+
+sendData();
