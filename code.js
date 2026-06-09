@@ -188,6 +188,12 @@ async function handleCommand(msg) {
 
         // New functionality added - will need testing
 
+        case "rename": {
+            const node = figma.currentPage.findOne(n => n.name === msg.query);
+            if (node) node.name = msg.name;
+            break;
+        }
+
         case "group": {
             // query: string[] - names of nodes to group together
             const nodes = msg.query

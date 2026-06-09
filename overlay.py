@@ -119,8 +119,9 @@ class OverlayView(NSView):
                 screen_x = (node["x"] - vp_x) * zoom
                 screen_y = CANVAS_H - ((node["y"] - vp_y) * zoom)
 
-                label_text = f"{node['name']}  ({node['id']})"
-                label_w = len(label_text) * 6
+                # label_text = f"{node['name']}  ({node['id']})"
+                label_text = f"{node['name']}"
+                label_w = len(label_text) * 10
 
                 NSColor.colorWithRed_green_blue_alpha_(0.5, 0.5, 0.5, 0.8).setFill()
                 NSBezierPath.fillRect_(CGRectMake(screen_x, screen_y, label_w, 17))
@@ -140,7 +141,7 @@ def ws_listener(view):
             print("Overlay connected to backend")
             while True:
                 data = json.loads(await ws.recv())
-                print(f"overlay received: {data}")
+                # print(f"overlay received: {data}")
 
                 # if data.type
 

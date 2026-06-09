@@ -14,6 +14,8 @@ from grid import NodeEdgeGrid
 
 from transcribers import GoogleTranscriber
 
+from labels import assign_labels
+
 from config import REASONING_MODEL, MAX_HISTORY
 
 
@@ -43,6 +45,29 @@ text_queue = queue.Queue()  # input sources put text here | thread safe
 ws = None
 
 
+def handle_label_nodes():
+    nodes = canvas_state.get("nodes", [])
+    if not nodes:
+        print("no nodes visible")
+        return None
+
+    mapping = assign_labels(nodes)
+
+    # send a rename command for each node
+    for label, node in mapping.items():
+        send_command(
+            {
+                "level": "figma",
+                "type": "rename",
+                "query": node["name"],
+                "name": label,
+            }
+        )
+
+    print(f"labelled {len(mapping)} nodes")
+    return None  # already sent commands directly
+
+
 def on_ws_message(ws_app, raw):
     global canvas_state
     data = json.loads(raw)
@@ -65,7 +90,7 @@ def ws_worker():
 
 # sends commands to the backend - the backend broadcasts it to all other connected clients
 def send_command(json_data):
-    print(json_data)
+    # print(json_data)
     if (
         ws and ws.sock and ws.sock.connected
     ):  # guard (please look into this in a bit more detail)
@@ -78,6 +103,10 @@ def send_command(json_data):
 # COMMANDS THAT MATCH TEMPLATES
 def handle_fixed_commands(text):
     text_lower = text.lower()
+
+    if "label nodes" in text_lower:
+        handle_label_nodes()
+        return None
 
     match = re.match(r"move (.+) to (\d+)$", text_lower)
     if match:
@@ -166,41 +195,6 @@ def handle_fuzzy_commands(
 
     print(f"\ncommand: {reply}\n")
     return reply
-
-
-def handle_move_to_cell(node_name, cell_number):
-    grid_data = NodeEdgeGrid().compute(canvas_state)
-
-    cell = next((c for c in grid_data.cells() if c["number"] == cell_number), None)
-    if not cell:
-        print(f"cell {cell_number} not found")
-        return None
-
-    print(f"looking for cell {cell_number}")
-    print(f"found cell: {cell}")
-
-    node = next(
-        (n for n in canvas_state.get("nodes", []) if n["name"].lower() == node_name),
-        None,
-    )
-
-    print(f"found node: {node}")
-
-    if not node:
-        print(f"node '{node_name}' not found")
-        return None
-
-    x = cell["cx"] - node["width"] / 2
-    y = cell["cy"] - node["height"] / 2
-    print(f"moving to x={x}, y={y}")
-
-    return {
-        "level": "figma",
-        "type": "move_absolute",
-        "query": node["name"],
-        "x": x,
-        "y": y,
-    }
 
 
 # Mouse control as fallback for UI interactions not possible via Figma API
