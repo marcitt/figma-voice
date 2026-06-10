@@ -4,8 +4,12 @@ from grid import NodeEdgeGrid
 
 
 def get_cell(canvas_state, cell_number):
+    vp = canvas_state.get("viewport", {})
+    zoom = vp.get("zoom", 1)
     grid_data = NodeEdgeGrid().compute(canvas_state)
-    return next((c for c in grid_data.cells() if c["number"] == cell_number), None)
+    return next(
+        (c for c in grid_data.visible_cells(zoom) if c["number"] == cell_number), None
+    )
 
 
 def get_node(canvas_state, node_name):
