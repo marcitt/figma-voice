@@ -68,13 +68,19 @@ def handle_label_nodes():
     return None  # already sent commands directly
 
 
+labelled = False
+
+
 def on_ws_message(ws_app, raw):
-    global canvas_state
+    global canvas_state, labelled
     data = json.loads(raw)
 
     # updates canvas state when new data is sent from the blugin
     if "nodes" in data:
         canvas_state = data
+        if not labelled and canvas_state.get("nodes"):
+            handle_label_nodes()
+            labelled = True
 
 
 #  creates a WebSocketApp - persistent connection to the backend - listens for incoming messages
@@ -326,8 +332,6 @@ def dispatcher_worker():
 
 threading.Thread(target=ws_worker, daemon=True).start()
 time.sleep(0.5)  # give ws a moment to connect before other workers start
-
-text_queue.put("deselect everything")
 
 transcriber = GoogleTranscriber()
 # transcriber = FasterWhisperTranscriber()
