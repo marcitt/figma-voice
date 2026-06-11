@@ -34,6 +34,8 @@ latest_data = None
 
 show_grid = False
 
+grid_density = 1.0
+
 
 def setup_quit_handler(app):
     NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
@@ -66,7 +68,8 @@ class OverlayView(NSView):
         vp_x = vp.get("x", 0)
         vp_y = vp.get("y", 0)
 
-        grid = NodeEdgeGrid()
+        # grid = NodeEdgeGrid()
+        grid = NodeEdgeGrid(density=grid_density)
         grid_data = grid.compute(data)
 
         node_attrs = NSDictionary.dictionaryWithObjects_forKeys_(
@@ -136,7 +139,7 @@ class OverlayView(NSView):
 
 def ws_listener(view):
     async def listen():
-        global latest_data, show_grid
+        global latest_data, show_grid, grid_density
         async with websockets.connect("ws://localhost:8000/ws") as ws:
             print("Overlay connected to backend")
             while True:
@@ -147,10 +150,13 @@ def ws_listener(view):
 
                 if "command" in data:
                     cmd = data["command"]
-                    print(cmd)
                     if cmd.get("type") == "grid":
-                        show_grid = cmd.get("action") == "show"
-                        print(show_grid)
+                        if cmd.get("action") == "show":
+                            show_grid = True
+                        elif cmd.get("action") == "hide":
+                            show_grid = False
+                        elif cmd.get("action") == "density":
+                            grid_density = cmd.get("value", 1.0)
                         view.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setNeedsDisplay:", True, False
                         )

@@ -1,12 +1,10 @@
-# commands.py
-
 from grid import NodeEdgeGrid
 
 
-def get_cell(canvas_state, cell_number):
+def get_cell(canvas_state, cell_number, density=1.0):
     vp = canvas_state.get("viewport", {})
     zoom = vp.get("zoom", 1)
-    grid_data = NodeEdgeGrid().compute(canvas_state)
+    grid_data = NodeEdgeGrid(density=density).compute(canvas_state)
     return next(
         (c for c in grid_data.visible_cells(zoom) if c["number"] == cell_number), None
     )
@@ -19,8 +17,8 @@ def get_node(canvas_state, node_name):
     )
 
 
-def move_to_cell(canvas_state, node_name, cell_number):
-    cell = get_cell(canvas_state, cell_number)
+def move_to_cell(canvas_state, node_name, cell_number, density=1.0):
+    cell = get_cell(canvas_state, cell_number, density)
     node = get_node(canvas_state, node_name)
     if not cell or not node:
         return None
@@ -33,13 +31,19 @@ def move_to_cell(canvas_state, node_name, cell_number):
     }
 
 
-def move_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge):
-    cell = get_cell(canvas_state, cell_number)
+def move_edge_to_cell(
+    canvas_state, node_name, node_edge, cell_number, cell_edge, density=1.0
+):
+    cell = get_cell(canvas_state, cell_number, density)
     node = get_node(canvas_state, node_name)
     if not cell or not node:
         return None
 
-    target = cell[cell_edge]
+    if cell_edge == "centre":
+        target = cell["cx"] if node_edge in ("east", "west") else cell["cy"]
+    else:
+        target = cell[cell_edge]
+
     x, y = node["x"], node["y"]
 
     if node_edge == "north":
@@ -60,13 +64,19 @@ def move_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge
     }
 
 
-def resize_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge):
-    cell = get_cell(canvas_state, cell_number)
+def resize_edge_to_cell(
+    canvas_state, node_name, node_edge, cell_number, cell_edge, density=1.0
+):
+    cell = get_cell(canvas_state, cell_number, density)
     node = get_node(canvas_state, node_name)
     if not cell or not node:
         return None
 
-    target = cell[cell_edge]
+    if cell_edge == "centre":
+        target = cell["cx"] if node_edge in ("east", "west") else cell["cy"]
+    else:
+        target = cell[cell_edge]
+
     x, y, w, h = node["x"], node["y"], node["width"], node["height"]
 
     if node_edge == "north":

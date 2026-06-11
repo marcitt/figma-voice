@@ -12,6 +12,7 @@ from openai import OpenAI
 import re
 from grid import NodeEdgeGrid
 
+# from transcribers import GoogleTranscriber, FasterWhisperTranscriber
 from transcribers import GoogleTranscriber
 
 from labels import assign_labels
@@ -40,6 +41,8 @@ with open("system_prompt_reasoning.txt") as f:
 history = []
 canvas_state = {}
 text_queue = queue.Queue()  # input sources put text here | thread safe
+
+grid_density = 1.0
 
 # global
 ws = None
@@ -73,11 +76,16 @@ labelled = False
 
 def on_ws_message(ws_app, raw):
     global canvas_state, labelled
+    # global canvas_state
     data = json.loads(raw)
 
     # updates canvas state when new data is sent from the blugin
     if "nodes" in data:
         canvas_state = data
+        print(
+            f"canvas updated: {len(data['nodes'])} nodes, viewport x={data['viewport']['x']:.1f} y={data['viewport']['y']:.1f}"
+        )
+
         if not labelled and canvas_state.get("nodes"):
             handle_label_nodes()
             labelled = True
@@ -108,15 +116,18 @@ def send_command(json_data):
 
 # COMMANDS THAT MATCH TEMPLATES
 def handle_fixed_commands(text):
+    global grid_density
+
     text_lower = text.lower()
 
     if "label nodes" in text_lower:
         handle_label_nodes()
         return None
-
     match = re.match(r"move (.+) to (\d+)$", text_lower)
     if match:
-        return move_to_cell(canvas_state, match.group(1).strip(), int(match.group(2)))
+        return move_to_cell(
+            canvas_state, match.group(1).strip(), int(match.group(2)), grid_density
+        )
 
     match = re.match(
         r"move (.+) (north|south|east|west) to (\d+) (north|south|east|west)",
@@ -129,6 +140,7 @@ def handle_fixed_commands(text):
             match.group(2),
             int(match.group(3)),
             match.group(4),
+            grid_density,
         )
 
     match = re.match(
@@ -142,6 +154,7 @@ def handle_fixed_commands(text):
             match.group(2),
             int(match.group(3)),
             match.group(4),
+            grid_density,
         )
 
     if "deselect everything" in text_lower:
@@ -161,6 +174,24 @@ def handle_fixed_commands(text):
 
     if "toggle overlay" in text_lower:
         return {"level": "system", "type": "overlay", "action": "toggle"}
+
+    if "increase density" in text_lower or "more grid" in text_lower:
+        grid_density = min(grid_density * 2.2, 6.0)
+        return {
+            "level": "system",
+            "type": "grid",
+            "action": "density",
+            "value": grid_density,
+        }
+
+    if "decrease density" in text_lower or "less grid" in text_lower:
+        grid_density = max(grid_density / 2.5, 0.1)
+        return {
+            "level": "system",
+            "type": "grid",
+            "action": "density",
+            "value": grid_density,
+        }
 
 
 # FUZZY COMMANDS THAT NEED LLM REASONING
@@ -334,7 +365,7 @@ threading.Thread(target=ws_worker, daemon=True).start()
 time.sleep(0.5)  # give ws a moment to connect before other workers start
 
 transcriber = GoogleTranscriber()
-# transcriber = FasterWhisperTranscriber()
+# transcriber = FasterWhisperTranscriber(model_size="medium")
 
 threading.Thread(target=transcriber.start, args=(text_queue,), daemon=True).start()
 threading.Thread(target=keyboard_worker, daemon=True).start()

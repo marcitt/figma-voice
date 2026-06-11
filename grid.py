@@ -18,6 +18,18 @@ from config import CANVAS_W, CANVAS_H
 # viewport has no data structure so we may be unsure what it contains
 
 
+def _cell_has_nodes(cell_x0, cell_x1, cell_y0, cell_y1, nodes):
+    for node in nodes:
+        if (
+            node["x"] < cell_x1
+            and node["x"] + node["width"] > cell_x0
+            and node["y"] < cell_y1
+            and node["y"] + node["height"] > cell_y0
+        ):
+            return True
+    return False
+
+
 @dataclass
 class GridData:
     x_lines: List[float]  # list of x values where vertical lines should be drawn
@@ -115,8 +127,77 @@ class FixedGrid:
 
 
 class NodeEdgeGrid:
-    def __init__(self):
+    def __init__(self, density=1.0):
+        self.density = density
         pass
+
+    def _choose_divisions_for_cell(self, cell_area, zoom):
+        screen_area = cell_area * zoom * zoom
+        if screen_area > 200000 / self.density:
+            return 4
+        elif screen_area > 120000 / self.density:
+            return 3
+        elif screen_area > 18000 / self.density:
+            return 2
+        else:
+            return 1
+
+    def subdivide_empty_cells(self, x_lines, y_lines, nodes, zoom):
+        extra_x = set()
+        extra_y = set()
+        for j in range(len(y_lines) - 1):
+            for i in range(len(x_lines) - 1):
+                x0, x1 = x_lines[i], x_lines[i + 1]
+                y0, y1 = y_lines[j], y_lines[j + 1]
+                if not _cell_has_nodes(x0, x1, y0, y1, nodes):
+                    cell_area = (x1 - x0) * (y1 - y0)
+                    # divisions = self._choose_divisions_for_cell(cell_area, nodes)
+                    divisions = self._choose_divisions_for_cell(cell_area, zoom)
+                    for d in range(1, divisions):
+                        extra_x.add(x0 + (x1 - x0) * d / divisions)
+                        extra_y.add(y0 + (y1 - y0) * d / divisions)
+        return sorted(set(x_lines) | extra_x), sorted(set(y_lines) | extra_y)
+
+    # def subdivide_empty_cells(self, x_lines, y_lines, nodes, divisions=None):
+    #     if divisions is None:
+    #         divisions = self._choose_divisions(nodes, x_lines, y_lines)
+
+    #     extra_x = set()
+    #     extra_y = set()
+    #     for j in range(len(y_lines) - 1):
+    #         for i in range(len(x_lines) - 1):
+    #             x0, x1 = x_lines[i], x_lines[i + 1]
+    #             y0, y1 = y_lines[j], y_lines[j + 1]
+    #             if not _cell_has_nodes(x0, x1, y0, y1, nodes):
+    #                 for d in range(1, divisions):
+    #                     extra_x.add(x0 + (x1 - x0) * d / divisions)
+    #                     extra_y.add(y0 + (y1 - y0) * d / divisions)
+    #     return sorted(set(x_lines) | extra_x), sorted(set(y_lines) | extra_y)
+
+    # def _choose_divisions(self, nodes, x_lines, y_lines):
+    #     node_count = len(nodes)
+
+    #     # compute average cell area in canvas units
+    #     areas = []
+    #     for j in range(len(y_lines) - 1):
+    #         for i in range(len(x_lines) - 1):
+    #             w = x_lines[i + 1] - x_lines[i]
+    #             h = y_lines[j + 1] - y_lines[j]
+    #             areas.append(w * h)
+    #     avg_area = sum(areas) / len(areas) if areas else 0
+
+    #     if node_count == 0:
+    #         return 10
+    #     elif node_count <= 1:
+    #         return 6
+    #     elif node_count <= 2:
+    #         return 4
+    #     elif node_count <= 3:
+    #         return 2
+    #     elif node_count < 4:
+    #         return 2
+    #     else:
+    #         return 1
 
     def compute(self, canvas_state):
         vp = canvas_state.get("viewport")
@@ -131,9 +212,6 @@ class NodeEdgeGrid:
         # viewport boundary lines
 
         zoom = vp.get("zoom", 1)
-        vp_x = vp.get("x", 0)
-        vp_y = vp.get("y", 0)
-
         vp_x = vp.get("x", 0)
         vp_y = vp.get("y", 0)
 
@@ -152,8 +230,26 @@ class NodeEdgeGrid:
             y_coords.add(node["y"])
             y_coords.add(node["y"] + node["height"])
 
+        # x_lines, y_lines = self.subdivide_empty_cells(
+        #     sorted(x_coords), sorted(y_coords), nodes, divisions=3
+        # )
+
+        # x_lines, y_lines = self.subdivide_empty_cells(
+        #     sorted(x_coords), sorted(y_coords), nodes
+        # )
+
+        x_lines, y_lines = self.subdivide_empty_cells(
+            sorted(x_coords), sorted(y_coords), nodes, zoom
+        )
+
         return GridData(
-            x_lines=sorted(x_coords),
-            y_lines=sorted(y_coords),
+            x_lines=x_lines,
+            y_lines=y_lines,
             grid_type="node_edge",
         )
+
+        # return GridData(
+        #     x_lines=sorted(x_coords),
+        #     y_lines=sorted(y_coords),
+        #     grid_type="node_edge",
+        # )
