@@ -9,6 +9,17 @@ CANVAS_W = 1470
 CANVAS_H = 956 - 75.5
 
 # FAST_MODEL = "gpt-5-nano"
+# FAST_MODEL = "gpt-4.1-nano"
+FAST_MODEL = "gpt-5.4-nano"
 # REASONING_MODEL = "gpt-4o-mini"
-REASONING_MODEL = "gpt-5-mini"
+# REASONING_MODEL = "gpt-5-mini"
 MAX_HISTORY = 10
+
+TRANSCRIBER = "deepgram"
+
+DENSITY = 0.1
+
+GRID_DIV_5 = 28000  # subdivide into 4 when cell screen area exceeds this
+GRID_DIV_4 = 22000  # subdivide into 4 when cell screen area exceeds this
+GRID_DIV_3 = 18000  # subdivide into 3
+GRID_DIV_2 = 14000  # subdivide into 2
