@@ -4,82 +4,50 @@ import queue
 import threading
 import time
 
-import pyautogui
 import websocket
 from dotenv import load_dotenv
 from openai import OpenAI
 
-import re
-from grid import NodeEdgeGrid
+import random
 
-# from transcribers import GoogleTranscriber, FasterWhisperTranscriber
-from transcribers import GoogleTranscriber
+from transcribers import DeepgramStreamingTranscriber
+from config import MAX_HISTORY, MODEL, VOICE_LABELS
 
-from labels import assign_labels
+from command_processing import regex_command_processing
+from command_descriptions import describe
+from command_dispatch import dispatch_structured_command
 
-from config import REASONING_MODEL, MAX_HISTORY
-
-
-from spatial_commands import move_to_cell, move_edge_to_cell, resize_edge_to_cell
-
-logging.basicConfig(
-    filename="latency.log", level=logging.INFO, format="%(asctime)s %(message)s"
+from spatial_commands import (
+    move_to_cell,
+    move_to_cell_edge,
+    move_edge_to_cell,
+    resize_edge_to_cell,
+    move_edge_by_pixels,
+    move_by_pixels,
 )
 
 load_dotenv()
 client = OpenAI()
 
-with open("system_prompt_fast.txt") as f:
-    SYSTEM_PROMPT_FAST = f.read()
-
-with open("system_prompt_reasoning.txt") as f:
-    SYSTEM_PROMPT_REASONING = f.read()
-
-
-# STATE
+with open("system_prompt.txt") as f:
+    SYSTEM_PROMPT = f.read()
 
 history = []
 canvas_state = {}
-text_queue = queue.Queue()  # input sources put text here | thread safe
+text_queue = queue.Queue()  # input sources put text here - thread safe
+transcriber = DeepgramStreamingTranscriber()
 
-grid_density = 1.0
-
-# global
 ws = None
-
-
-def handle_label_nodes():
-    nodes = canvas_state.get("nodes", [])
-    if not nodes:
-        print("no nodes visible")
-        return None
-
-    mapping = assign_labels(nodes)
-
-    # send a rename command for each node
-    for label, node in mapping.items():
-        send_command(
-            {
-                "level": "figma",
-                "type": "rename",
-                "query": node["name"],
-                "name": label,
-            }
-        )
-
-    print(f"labelled {len(mapping)} nodes")
-    return None  # already sent commands directly
-
-
 labelled = False
+
+# WEBSOCKETS
 
 
 def on_ws_message(ws_app, raw):
     global canvas_state, labelled
-    # global canvas_state
     data = json.loads(raw)
 
-    # updates canvas state when new data is sent from the blugin
+    # updates canvas state when new data is sent from the plugin
     if "nodes" in data:
         canvas_state = data
         print(
@@ -87,7 +55,7 @@ def on_ws_message(ws_app, raw):
         )
 
         if not labelled and canvas_state.get("nodes"):
-            handle_label_nodes()
+            label_nodes()
             labelled = True
 
 
@@ -99,242 +67,155 @@ def ws_worker():
         on_message=on_ws_message,
         on_open=lambda ws: print("pipeline connected to backend"),
     )
-    ws.run_forever()
+    ws.run_forever(ping_interval=20, ping_timeout=10)
 
 
 # sends commands to the backend - the backend broadcasts it to all other connected clients
 def send_command(json_data):
-    # print(json_data)
     if (
         ws and ws.sock and ws.sock.connected
     ):  # guard (please look into this in a bit more detail)
-        # print(f"sending:{json_data}")
         ws.send(json.dumps({"command": json_data}))
     else:
         print("ws not connected, command dropped")
 
 
-# COMMANDS THAT MATCH TEMPLATES
-def handle_fixed_commands(text):
-    global grid_density
+# LABELLING
 
-    text_lower = text.lower()
 
-    if "label nodes" in text_lower:
-        handle_label_nodes()
+def label_nodes():
+    nodes = canvas_state.get("nodes", [])
+    if not nodes:
+        print("no nodes visible")
         return None
-    match = re.match(r"move (.+) to (\d+)$", text_lower)
-    if match:
-        return move_to_cell(
-            canvas_state, match.group(1).strip(), int(match.group(2)), grid_density
+
+    shuffled = random.sample(VOICE_LABELS, len(nodes))
+
+    mapping = {label: node for label, node in zip(shuffled, nodes)}
+
+    # send a rename command for each node
+    for label, node in mapping.items():
+        send_command(
+            {
+                "level": "figma",
+                "type": "rename",
+                "query": node["name"],
+                "name": label,
+            }
         )
+    print(f"labelled {len(mapping)} nodes")
 
-    match = re.match(
-        r"move (.+) (north|south|east|west) to (\d+) (north|south|east|west)",
-        text_lower,
-    )
-    if match:
-        return move_edge_to_cell(
-            canvas_state,
-            match.group(1).strip(),
-            match.group(2),
-            int(match.group(3)),
-            match.group(4),
-            grid_density,
-        )
 
-    match = re.match(
-        r"resize (.+) (north|south|east|west) to (\d+) (north|south|east|west)",
-        text_lower,
-    )
-    if match:
-        return resize_edge_to_cell(
-            canvas_state,
-            match.group(1).strip(),
-            match.group(2),
-            int(match.group(3)),
-            match.group(4),
-            grid_density,
-        )
+# PARSING
 
-    if "deselect everything" in text_lower:
-        return {"type": "select", "query": []}
 
-    if "show grid" in text_lower:
-        return {"level": "system", "type": "grid", "action": "show"}
+def parse_output(text_out):
+    try:
+        return json.loads(text_out)
+    except json.JSONDecodeError:
+        print(f"invalid json, skipping: {text_out}")
+        return None
 
-    if "hide grid" in text_lower:
-        return {"level": "system", "type": "grid", "action": "hide"}
 
-    if "show overlay" in text_lower or "open overlay" in text_lower:
-        return {"level": "system", "type": "overlay", "action": "show"}
+# HUD
 
-    if "hide overlay" in text_lower or "close overlay" in text_lower:
-        return {"level": "system", "type": "overlay", "action": "hide"}
 
-    if "toggle overlay" in text_lower:
-        return {"level": "system", "type": "overlay", "action": "toggle"}
-
-    if "increase density" in text_lower or "more grid" in text_lower:
-        grid_density = min(grid_density * 2.2, 6.0)
-        return {
+def send_hud(transcription, reasoning=None, action=None):
+    send_command(
+        {
             "level": "system",
-            "type": "grid",
-            "action": "density",
-            "value": grid_density,
+            "type": "hud",
+            "transcription": transcription,
+            "reasoning": reasoning,
+            "action": action,
         }
-
-    if "decrease density" in text_lower or "less grid" in text_lower:
-        grid_density = max(grid_density / 2.5, 0.1)
-        return {
-            "level": "system",
-            "type": "grid",
-            "action": "density",
-            "value": grid_density,
-        }
+    )
 
 
-# FUZZY COMMANDS THAT NEED LLM REASONING
-def handle_fuzzy_commands(
-    text,
-    model,
-    system_prompt,
-    include_canvas=False,
-    effort="low",
-):
-
-    global history
-
-    # full context
-    if include_canvas:
-        content = f"Canvas state: {canvas_state}\n\nCommand: {text}. Respond in JSON"
-    else:
-        # if less context is included at a minimum the layer names should be supplied
-        layer_names = [n["name"] for n in canvas_state.get("nodes", [])]
-
-        content = f"Layer names: {layer_names}\n\nCommand: {text}. Respond in JSON"
+def llm_command_processing(text, canvas_state, history, model, system_prompt):
+    layer_names = [n["name"] for n in canvas_state.get("nodes", [])]
+    content = f"Layer names: {layer_names}\n\nCommand: {text}. Respond in JSON"
 
     history.append({"role": "user", "content": content})
-    if len(history) > MAX_HISTORY:
-        history = history[-MAX_HISTORY:]
 
     response = client.responses.create(
         model=model,
         instructions=system_prompt,
-        reasoning={"effort": effort},
         input=history,
         text={"format": {"type": "json_object"}},
     )
 
     reply = response.output_text.strip()
-
     history.append({"role": "assistant", "content": reply})
-
-    print(f"\ncommand: {reply}\n")
+    print(f"\nllm: {reply}\n")
     return reply
 
 
-# Mouse control as fallback for UI interactions not possible via Figma API
-# These are generally not required - more useful for debugging / testing
-# def handle_mouse_command(cmd):
-#     action = cmd.get("action")
-
-#     try:
-#         if action == "move":
-#             x = cmd.get("x")
-#             y = cmd.get("y")
-#             pyautogui.moveTo(x, y, duration=0.3)
-
-#         elif action == "click":
-#             x = cmd.get("x")
-#             y = cmd.get("y")
-#             pyautogui.click(x, y)
-
-#         elif action == "double_click":
-#             x = cmd.get("x")
-#             y = cmd.get("y")
-#             pyautogui.doubleClick(x, y)
-
-#         elif action == "right_click":
-#             x = cmd.get("x")
-#             y = cmd.get("y")
-#             pyautogui.rightClick(x, y)
-
-#         elif action == "drag":
-#             x1 = cmd.get("x1")
-#             y1 = cmd.get("y1")
-#             x2 = cmd.get("x2")
-#             y2 = cmd.get("y2")
-#             pyautogui.moveTo(x1, y1)
-#             pyautogui.dragTo(x2, y2, duration=0.5)
-
-#         print(f"mouse: {action} at ({cmd.get('x')}, {cmd.get('y')})")
-
-#     except Exception as e:
-#         print(f"mouse error: {e}")
-
-
-def parse_output(text_out):
-    try:
-        json_data = json.loads(text_out)
-    except json.JSONDecodeError:
-        print(f"invalid json, skipping: {text_out}")
-        return None
-
-    if "REASONING" in json_data:
-        print(f"\nreasoning: {json_data['REASONING']}\n")
-
-    if "COMMAND" in json_data:
-        json_data = json_data["COMMAND"]
-
-    return json_data
-
-
 def command_worker(text):
-    fixed = handle_fixed_commands(text)
+    global history
+
+    send_hud(transcription=text)
+
+    # step 1 - regex
+    fixed = regex_command_processing(text, canvas_state)
+
+    if fixed == "LABEL_NODES":
+        label_nodes()
+        return
+
     if fixed:
+        if fixed.get("error"):
+            send_hud(transcription=text, action=fixed["error"])
+            return
         send_command(fixed)
+        send_hud(transcription=text, action=text)
+        history.append({"role": "user", "content": f"Command: {text}. Respond in JSON"})
+        history.append({"role": "assistant", "content": json.dumps(fixed)})
+        if len(history) > MAX_HISTORY:
+            history = history[-MAX_HISTORY:]
         return
 
-    # ROUTING (removed for now)
-    # text_out = handle_fuzzy_commands(text, model=FAST_MODEL, include_canvas=False)
-
-    # json_data = parse_output(text_out)
-    # if json_data is None:
-    #     return
-
-    # effort = json_data.pop("effort", "low")
-
-    # if json_data.get("route") == "complex":
-    #     print(f"routing to complex (effort: {effort})...")
-    #     text_out = handle_fuzzy_commands(
-    #         text,
-    #         model=REASONING_MODEL,
-    #         include_canvas=True,
-    #         effort=effort,
-    #         system_prompt=SYSTEM_PROMPT_REASONING,
-    #     )
-    #     json_data = parse_output(text_out)
-    #     if json_data is None:
-    #         return
-
-    # WITHOUT ROUTING:
-    text_out = handle_fuzzy_commands(
-        text,
-        model=REASONING_MODEL,
-        include_canvas=True,
-        system_prompt=SYSTEM_PROMPT_REASONING,
+    # step 2 - LLM
+    send_hud(transcription=text, reasoning="reasoning...")
+    text_out = llm_command_processing(
+        text, canvas_state, history, model=MODEL, system_prompt=SYSTEM_PROMPT
     )
+    cmd = parse_output(text_out)
 
-    json_data = parse_output(text_out)
-
-    if json_data is None:
+    if cmd is None:
+        send_hud(transcription=text, action="could not parse response")
         return
 
-    send_command(json_data)
+    if len(history) > MAX_HISTORY:
+        history = history[-MAX_HISTORY:]
 
+    # step 3 - route by level
+    level = cmd.get("level")
 
-# GIL - may be some queries on this
+    if level == "python":
+        result = dispatch_structured_command(cmd, canvas_state)
+        if result and not result.get("error"):
+            send_command(result)
+            send_hud(transcription=text, action=describe(cmd))
+        else:
+            err = result.get("error") if result else "command failed"
+            send_hud(transcription=text, action=err)
+
+    elif level == "figma":
+        if cmd.get("type") == "unknown":
+            print(f"not understood: '{text}'")
+            send_hud(transcription=text, action="not recognised")
+        else:
+            send_command(cmd)
+            send_hud(transcription=text, action=describe(cmd))
+
+    elif level == "system":
+        send_command(cmd)
+        send_hud(transcription=text, action=describe(cmd))
+
+    else:
+        print(f"unrecognised level: {level}")
+        send_hud(transcription=text, action=f"unrecognised level: {level}")
 
 
 def keyboard_worker():
@@ -354,22 +235,18 @@ def dispatcher_worker():
     while True:
         text = text_queue.get()
         if text:
-
             command_worker(text)
-
-            # if you want to spawn a new thread instead
-            # threading.Thread(target=command_worker, args=(text,), daemon=True).start()
 
 
 threading.Thread(target=ws_worker, daemon=True).start()
 time.sleep(0.5)  # give ws a moment to connect before other workers start
 
-transcriber = GoogleTranscriber()
-# transcriber = FasterWhisperTranscriber(model_size="medium")
-
 threading.Thread(target=transcriber.start, args=(text_queue,), daemon=True).start()
 threading.Thread(target=keyboard_worker, daemon=True).start()
 threading.Thread(target=dispatcher_worker, daemon=True).start()
+
+# pyautogui.moveTo(100, 150)
+# pyautogui.click()
 
 try:
     while True:

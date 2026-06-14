@@ -1,68 +1,49 @@
 <!DOCTYPE html>
 <html>
-
+<head>
+<style>
+  body { font-family: Inter, sans-serif; font-size: 11px; margin: 8px; }
+  button { padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; background: #eee; color: #333; }
+  #status { color: #999; margin-left: 8px; }
+</style>
+</head>
 <body>
-    <h3>Plugin running...</h3>
-    <input id="query" type="text" placeholder="command..." />
-    <button id="btn">Select</button>
-    <p id="status">Waiting...</p>
 
-    <script>
-        let ws;
+<button id="snap-btn">Snap Viewport</button>
+<span id="status">—</span>
 
-        function connect() {
-            ws = new WebSocket("ws://localhost:8000/ws");
+<!-- ui for debugging -->
+<!-- <input id="query" type="text" placeholder="command..." />
+<button id="btn">Select</button> -->
 
-            ws.onopen = () => console.log("connected to backend");
+<script>
 
-            // commands coming from backend - forward to code.js
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.command) {
-                    parent.postMessage({ pluginMessage: data.command }, "*");
-                }
-            };
+const VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
-            ws.onclose = () => {
-                console.log("disconnected — retrying in 2s");
-                setTimeout(connect, 2000);
-            };
-        }
+let ws;
+function connect() {
+  ws = new WebSocket("ws://localhost:8000/ws"); //opens websocket connection
+  ws.onopen = () => { document.getElementById("status").textContent = "connected"; };
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.command) parent.postMessage({ pluginMessage: data.command }, "*");
+  };
+  ws.onclose = () => {
+    document.getElementById("status").textContent = "reconnecting...";
+    setTimeout(connect, 2000);
+  };
+}
+connect();
 
-        connect();
+document.getElementById("snap-btn").onclick = () => {
+  parent.postMessage({ pluginMessage: { type: "set_viewport", ...VIEWPORT } }, "*");
+};
 
-        document.getElementById("btn").onclick = () => {
-            const query = document.getElementById("query").value;
-            console.log(query);
-
-            let message;
-            try {
-                message = JSON.parse(query);
-            } catch {
-                console.error("Invalid JSON");
-                return;
-            }
-
-            parent.postMessage({ pluginMessage: message }, "*");
-        };
-
-        // all messages from code.js handled here
-        window.onmessage = (event) => {
-            const msg = event.data.pluginMessage;
-            if (!msg) return;
-
-            // status messages from code.js - update UI
-            if (msg.type === "status") {
-                document.getElementById("status").innerText = msg.text;
-                return;
-            }
-
-            // canvas state from code.js → forward to backend
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(msg));
-            }
-        };
-    </script>
+window.onmessage = (event) => {
+  const msg = event.data.pluginMessage;
+  if (!msg || !ws.readyState === WebSocket.OPEN) return;
+  ws.send(JSON.stringify(msg));
+};
+</script>
 </body>
-
 </html>

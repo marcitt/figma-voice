@@ -4,19 +4,19 @@ channels:
 dependencies:
   - python=3.11
   - pip
-  - portaudio        
+  - portaudio
   - pip:
     - fastapi
     - uvicorn
     - openai
     - python-dotenv
-    - opencv-python
-    - mss
-    - numpy
     - pyobjc-framework-Quartz
-    - pyobjc-framework-ApplicationServices
     - pyobjc-framework-Cocoa
     - SpeechRecognition
     - pyaudio
+    - deepgram-sdk
     - faster-whisper
-    - requests
+    - soundfile
+    - pyautogui
+    - websocket-client
+    - websockets

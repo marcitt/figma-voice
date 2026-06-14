@@ -15,6 +15,8 @@ clients = []
 
 latest_state = None
 
+# websockets are used to reduce the dependency on HTTP polling
+# HTTP polling adds extra latency and unnecessary complexity
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -33,10 +35,13 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
             if "nodes" in data:
                 latest_state = data
+                
+            # when the canvas changes the data is broadcast to the other clients:
             print(f"Received data, broadcasting to {len(clients) - 1} other clients")
             for client in clients:
                 if client != websocket:
                     await client.send_json(data)
+                    
     except WebSocketDisconnect:
         clients.remove(websocket)
         print(f"Client disconnected — {len(clients)} total")

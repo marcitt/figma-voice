@@ -8,18 +8,17 @@ CANVAS_TOP_LEFT_Y = 76
 CANVAS_W = 1470
 CANVAS_H = 956 - 75.5
 
-# FAST_MODEL = "gpt-5-nano"
-# FAST_MODEL = "gpt-4.1-nano"
-FAST_MODEL = "gpt-5.4-nano"
-# REASONING_MODEL = "gpt-4o-mini"
-# REASONING_MODEL = "gpt-5-mini"
+MODEL = "gpt-5.4-nano"
 MAX_HISTORY = 10
 
-TRANSCRIBER = "deepgram"
+LISTENING_ON_STARTUP = True
+GRID_ON_STARTUP = True
 
-DENSITY = 0.1
+TRANSCRIBER = "deepgram_streaming"  # options: "deepgram", "deepgram_streaming", "google"
 
-GRID_DIV_5 = 28000  # subdivide into 4 when cell screen area exceeds this
-GRID_DIV_4 = 22000  # subdivide into 4 when cell screen area exceeds this
-GRID_DIV_3 = 18000  # subdivide into 3
-GRID_DIV_2 = 14000  # subdivide into 2
+# Talon Alphabet
+VOICE_LABELS = [
+    "air", "bat", "cap", "drum", "each", "fine", "gust", "harp", "sit", "jury",
+    "crunch", "look", "made", "near", "odd", "pit", "quench", "red", "sun", "trap",
+    "urge", "vest", "whale", "plex", "yank", "zip",
+]

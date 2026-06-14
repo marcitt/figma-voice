@@ -1,5 +1,4 @@
-figma.showUI(__html__, { width: 400, height: 200 });
-figma.showUI(__html__, { visible: false })
+figma.showUI(__html__, { width: 100, height: 70 });
 
 /**
  * Command Message Types
@@ -42,18 +41,19 @@ figma.showUI(__html__, { visible: false })
  */
 
 
+// listens for messages from ui.html -> these get passed to handleCommand
 figma.ui.onmessage = async (msg) => {
     await handleCommand(msg);
 };
 
 async function handleCommand(msg) {
-    console.log(msg);
 
+    // switch gives simpler implementation than list of if/else statements
     switch (msg.type) {
 
         case "select": {
-            // query: string[] - names of nodes to select, handles single string or array
             const nodes = msg.query
+                // maps over the array
                 .map(q => figma.currentPage.findOne(n => n.name === q))
                 .filter(Boolean);
             figma.currentPage.selection = nodes;
@@ -61,7 +61,6 @@ async function handleCommand(msg) {
         }
 
         case "focus_object": {
-            // if query is an array, use scrollAndZoomIntoView to fit all nodes
             if (Array.isArray(msg.query)) {
                 const nodes = msg.query
                     .map(q => figma.currentPage.findOne(n => n.name === q))
@@ -69,124 +68,91 @@ async function handleCommand(msg) {
                 if (nodes.length > 0) figma.viewport.scrollAndZoomIntoView(nodes);
                 break;
             }
-
-            // query: string - name of node to zoom into
             const node = figma.currentPage.findOne(n => n.name === msg.query);
             if (node && node.absoluteBoundingBox) {
                 const { x, y, width, height } = node.absoluteBoundingBox;
-                // calculate zoom to fit object in viewport - using min of both axes
-                // so the object always fits without cropping regardless of aspect ratio
-                // viewport.bounds is in viewport pixels but absoluteBoundingBox is in canvas units
-                // so we multiply by current zoom to account for the mismatch
+                // viewport.bounds is in viewport pixels, absoluteBoundingBox in canvas units
+                // multiply by current zoom to account for the mismatch
                 const zoom = Math.min(
                     (figma.viewport.bounds.width / width) * figma.viewport.zoom,
                     (figma.viewport.bounds.height / height) * figma.viewport.zoom
                 );
-                // scrollAndZoomIntoView was unreliable because it fits relative to the whole viewport
-                // including figma UI panels which made objects appear smaller than expected
-                // reduce zoom by 50% to add padding and stop object feeling too squished
+                // reduce by 50% to add padding - scrollAndZoomIntoView was unreliable
+                // as it accounts for Figma UI panels making objects appear smaller
                 figma.viewport.zoom = zoom - (zoom * 0.5);
-                figma.viewport.center = {
-                    x: x + width / 2,
-                    y: y + height / 2
-                };
+                figma.viewport.center = { x: x + width / 2, y: y + height / 2 };
             }
             break;
         }
 
-        case "zoom": {
-            // zoom_delta: number - relative zoom change, positive to zoom in, negative to zoom out
+        case "zoom":
             figma.viewport.zoom = figma.viewport.zoom + msg.zoom_delta;
             break;
-        }
 
         case "pan": {
-            // dx, dy: number - relative pixel delta to pan by
             const center = figma.viewport.center;
-            figma.viewport.center = {
-                x: center.x + msg.dx,
-                y: center.y + msg.dy
-            };
+            figma.viewport.center = { x: center.x + msg.dx, y: center.y + msg.dy };
             break;
         }
 
         case "move": {
-            // query: string - node name; dx, dy: number - relative pixel delta
+            // searches the current page for a node matching the condition
             const node = figma.currentPage.findOne(n => n.name === msg.query);
-            if (node) {
-                node.x += msg.dx;
-                node.y += msg.dy;
-            }
+            if (node) { node.x += msg.dx; node.y += msg.dy; }
             break;
         }
 
         case "move_absolute": {
-            // query: string - node name; x, y: number - absolute canvas position
             const node = figma.currentPage.findOne(n => n.name === msg.query);
-            if (node) {
-                node.x = msg.x;
-                node.y = msg.y;
-            }
+            if (node) { node.x = msg.x; node.y = msg.y; }
             break;
         }
 
         case "resize_scale": {
-            // query: string - node name; factor: number - scale multiplier e.g. 2 doubles, 0.5 halves
             const node = figma.currentPage.findOne(n => n.name === msg.query);
-            if (node) {
-                node.resize(node.width * msg.factor, node.height * msg.factor);
-            }
+            if (node) node.resize(node.width * msg.factor, node.height * msg.factor);
             break;
         }
 
         case "resize_delta": {
-            // query: string - node name; dw, dh: number - pixel delta to add to current width/height
             const node = figma.currentPage.findOne(n => n.name === msg.query);
-            if (node) {
-                node.resize(node.width + msg.dw, node.height + msg.dh);
-            }
+            if (node) node.resize(node.width + msg.dw, node.height + msg.dh);
             break;
         }
 
         case "resize_absolute": {
             const node = figma.currentPage.findOne(n => n.name === msg.query);
-            if (node) {
-                node.x = msg.x;
-                node.y = msg.y;
-                node.resize(msg.width, msg.height);
-            }
+            if (node) { node.x = msg.x; node.y = msg.y; node.resize(msg.width, msg.height); }
             break;
         }
 
         case "create_rect": {
-            // x, y: number - position; width?, height?: number - size (default 100)
             const rect = figma.createRectangle();
-            rect.x = msg.x;
-            rect.y = msg.y;
+            rect.x = msg.x; rect.y = msg.y;
             rect.resize(msg.width || 100, msg.height || 100);
             figma.currentPage.appendChild(rect);
             break;
         }
 
         case "create_text": {
-            // x, y: number - position; content?: string - text body (default "Text")
             await figma.loadFontAsync({ family: "Inter", style: "Regular" });
             const text = figma.createText();
-            text.x = msg.x;
-            text.y = msg.y;
+            text.x = msg.x; text.y = msg.y;
             text.characters = msg.content || "Text";
             figma.currentPage.appendChild(text);
             break;
         }
 
         case "zoom_fit": {
-            // no fields - zooms to fit all nodes on the page
             const nodes = figma.currentPage.findAll();
             if (nodes.length > 0) figma.viewport.scrollAndZoomIntoView(nodes);
             break;
         }
 
-        // New functionality added - will need testing
+        case "set_viewport":
+            figma.viewport.center = { x: msg.x, y: msg.y };
+            figma.viewport.zoom = msg.zoom;
+            break;
 
         case "rename": {
             const node = figma.currentPage.findOne(n => n.name === msg.query);
@@ -195,7 +161,6 @@ async function handleCommand(msg) {
         }
 
         case "group": {
-            // query: string[] - names of nodes to group together
             const nodes = msg.query
                 .map(q => figma.currentPage.findOne(n => n.name === q))
                 .filter(Boolean);
@@ -204,23 +169,26 @@ async function handleCommand(msg) {
         }
 
         case "ungroup": {
-            // query: string - name of group or frame to ungroup
             const node = figma.currentPage.findOne(n => n.name === msg.query);
             if (node && node.type === "GROUP") figma.ungroup(node);
             break;
         }
 
         case "bring_forward": {
-            // query: string - name of node to bring forward one step in z-order
             const node = figma.currentPage.findOne(n => n.name === msg.query);
             if (node) node.parent.insertChild(node.parent.children.indexOf(node) + 1, node);
             break;
         }
 
         case "send_backward": {
-            // query: string - name of node to send backward one step in z-order
             const node = figma.currentPage.findOne(n => n.name === msg.query);
             if (node) node.parent.insertChild(node.parent.children.indexOf(node) - 1, node);
+            break;
+        }
+
+        case "undo": {
+            const steps = msg.steps || 1;
+            for (let i = 0; i < steps; i++) figma.triggerUndo();
             break;
         }
 
@@ -229,38 +197,12 @@ async function handleCommand(msg) {
     }
 }
 
-// function sendData() {
-//     const nodes = figma.currentPage.findAll(n => n.visible);
-//     const payload = {
-//         nodes: nodes.map(n => {
-//             const bbox = n.absoluteBoundingBox || { x: 0, y: 0, width: 0, height: 0 };
-//             return {
-//                 id: n.id,
-//                 name: n.name,
-//                 type: n.type,
-//                 x: bbox.x,
-//                 y: bbox.y,
-//                 width: bbox.width,
-//                 height: bbox.height
-//             };
-//         }),
-//         viewport: {
-//             x: figma.viewport.bounds.x,
-//             y: figma.viewport.bounds.y,
-//             zoom: figma.viewport.zoom
-//         },
-//         currently_selected_object: figma.currentPage.selection
-//     };
-//     figma.ui.postMessage(payload);
-// }
-
 function sendData() {
     const vp = figma.viewport.bounds;
     const nodes = figma.currentPage.findAll(n => {
-        if (!n.visible) return false;
+        if (!n.visible || n.locked) return false;
         const bbox = n.absoluteBoundingBox;
         if (!bbox) return false;
-        // check if node overlaps with viewport
         return (
             bbox.x < vp.x + vp.width &&
             bbox.x + bbox.width > vp.x &&
@@ -268,28 +210,12 @@ function sendData() {
             bbox.y + bbox.height > vp.y
         );
     });
-
     const payload = {
         nodes: nodes.map(n => {
             const bbox = n.absoluteBoundingBox;
-            return {
-                id: n.id,
-                name: n.name,
-                type: n.type,
-                x: bbox.x,
-                y: bbox.y,
-                width: bbox.width,
-                height: bbox.height
-            };
+            return { id: n.id, name: n.name, type: n.type, x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
         }),
-        viewport: {
-            x: vp.x,
-            y: vp.y,
-            width: vp.width,
-            height: vp.height,
-            zoom: figma.viewport.zoom
-        },
-        currently_selected_object: figma.currentPage.selection
+        viewport: { x: vp.x, y: vp.y, width: vp.width, height: vp.height, zoom: figma.viewport.zoom }
     };
     figma.ui.postMessage(payload);
 }
@@ -301,21 +227,15 @@ function debouncedSendData() {
 }
 
 figma.on("documentchange", debouncedSendData);
-
-// send on canvas changes
-// figma.on("documentchange", sendData);
 figma.on("selectionchange", sendData);
 figma.on("currentpagechange", sendData);
 
-// poll viewport every 500ms and send update if it changed
+// poll every 500ms - no native viewport change event in Figma API
 let lastViewport = null;
 setInterval(() => {
     const vp = figma.viewport;
     const current = `${vp.center.x},${vp.center.y},${vp.zoom}`;
-    if (current !== lastViewport) {
-        lastViewport = current;
-        sendData();
-    }
+    if (current !== lastViewport) { lastViewport = current; sendData(); }
 }, 500);
 
 sendData();
