@@ -11,8 +11,14 @@ from dotenv import load_dotenv
 
 from config import LISTENING_ON_STARTUP
 
+import speech_recognition as sr
+
+from deepgram import DeepgramClient
+
 load_dotenv()
 
+from config import VOICE_LABELS, GRAMMAR_KEYWORDS
+keyterms=VOICE_LABELS + GRAMMAR_KEYWORDS
 
 class DeepgramStreamingTranscriber:
     """
@@ -24,7 +30,7 @@ class DeepgramStreamingTranscriber:
 
     def __init__(self):
         self.listening = LISTENING_ON_STARTUP
-        self._keyterms = []
+        self._keyterms = keyterms
         self._api_key = os.getenv("DEEPGRAM", "")
 
     def start(self, text_queue: queue.Queue) -> None:
@@ -97,6 +103,80 @@ class DeepgramStreamingTranscriber:
     def set_keyterms(self, keyterms: list[str]) -> None:
         # note: only takes effect on next connection
         self._keyterms = keyterms
+
+    def _collapse_digit_sequences(self, text: str) -> str:
+        return re.sub(r"\b(\d)( \d)+\b", lambda m: m.group(0).replace(" ", ""), text)
+    
+
+class DeepgramTranscriber:
+    """
+    Records complete phrases from the microphone and sends to Deepgram
+    as pre-recorded audio. More reliable phrase detection than streaming
+    for short command-and-control input.
+    Public interface: start(text_queue)
+    """
+
+    def __init__(self):
+        self.listening = LISTENING_ON_STARTUP
+        self._keyterms = keyterms
+        self._client = DeepgramClient(api_key=os.getenv("DEEPGRAM", ""))
+        self._audio_queue = queue.Queue()
+
+    def start(self, text_queue: queue.Queue) -> None:
+        threading.Thread(target=self._record, daemon=True).start()
+        self._transcribe(text_queue)
+
+    def set_listening(self, value: bool):
+        self.listening = value
+
+    def set_keyterms(self, keyterms: list[str]) -> None:
+        self._keyterms = keyterms
+
+    def _record(self) -> None:
+        r = sr.Recognizer()
+        r.energy_threshold = 150
+        r.dynamic_energy_threshold = False
+
+        with sr.Microphone() as source:
+            print("microphone ready")
+            while True:
+                if not self.listening:
+                    time.sleep(0.05)
+                    continue
+                try:
+                    audio = r.listen(source, phrase_time_limit=8)
+                    self._audio_queue.put(audio)
+                except sr.WaitTimeoutError:
+                    continue
+
+    def _transcribe(self, text_queue: queue.Queue) -> None:
+        while True:
+            try:
+                audio = self._audio_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+
+            wav_bytes = audio.get_wav_data()
+
+            try:
+                response = self._client.listen.v1.media.transcribe_file(
+                    request=wav_bytes,
+                    model="nova-3",
+                    language="en",
+                    keyterm=self._keyterms,
+                    numerals=True,
+                    punctuate=False,
+                )
+                text = response.results.channels[0].alternatives[0].transcript.strip()
+            except Exception as e:
+                print(f"deepgram error: {e}")
+                continue
+
+            text = self._collapse_digit_sequences(text)
+
+            if len(text) >= 2:
+                print(f'\ntranscription: "{text}"')
+                text_queue.put(text)
 
     def _collapse_digit_sequences(self, text: str) -> str:
         return re.sub(r"\b(\d)( \d)+\b", lambda m: m.group(0).replace(" ", ""), text)
