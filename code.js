@@ -187,8 +187,7 @@ async function handleCommand(msg) {
         }
 
         case "undo": {
-            const steps = msg.steps || 1;
-            for (let i = 0; i < steps; i++) figma.triggerUndo();
+            figma.triggerUndo();
             break;
         }
 
