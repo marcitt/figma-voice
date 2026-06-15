@@ -86,7 +86,8 @@ async function handleCommand(msg) {
         }
 
         case "zoom":
-            figma.viewport.zoom = figma.viewport.zoom + msg.zoom_delta;
+            // figma.viewport.zoom = figma.viewport.zoom + msg.zoom_delta;
+            figma.viewport.zoom = figma.viewport.zoom * msg.zoom_delta;
             break;
 
         case "pan": {
@@ -145,7 +146,9 @@ async function handleCommand(msg) {
 
         case "zoom_fit": {
             const nodes = figma.currentPage.findAll();
-            if (nodes.length > 0) figma.viewport.scrollAndZoomIntoView(nodes);
+            if (nodes.length > 0) 
+                    figma.viewport.scrollAndZoomIntoView(nodes);
+                    figma.viewport.zoom = figma.viewport.zoom * 0.8;
             break;
         }
 

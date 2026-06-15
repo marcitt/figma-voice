@@ -34,20 +34,29 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
     if "deselect everything" in text_lower:
         return {"level": "figma", "type": "select", "query": []}
 
+    # --- ZOOM ---
+    # this needs to come before "zoom to " to prevent it getting caught
+    
+    if re.search(r"zoom in$", text_lower):
+        return {"level": "figma", "type": "zoom", "zoom_delta": 1.5}
+    if re.search(r"zoom out$", text_lower):
+        return {"level": "figma", "type": "zoom", "zoom_delta": 0.5}
+    
+    if any(p in text_lower for p in ("zoom to show everything", "zoom to fit", "zoom to context", "focus context")):
+        print(f"[DEBUG] text_lower: {repr(text_lower)}")
+        return {"level": "figma", "type": "zoom_fit"}
+    
     # --- FOCUS ---
+    
     for prefix in ("zoom to focus ", "zoom to object ", "zoom to ", "focus "):
         if text_lower.startswith(prefix):
             remainder = text_lower[len(prefix):].strip()
             if not remainder.isdigit():
                 return {"level": "figma", "type": "focus_object", "query": remainder}
 
-    # --- ZOOM ---
-    if re.search(r"zoom in$", text_lower):
-        return {"level": "figma", "type": "zoom", "zoom_delta": 0.25}
-    if re.search(r"zoom out$", text_lower):
-        return {"level": "figma", "type": "zoom", "zoom_delta": -0.25}
-    if any(p in text_lower for p in ("zoom to show everything", "zoom to fit", "zoom to context", "focus context")):
-        return {"level": "figma", "type": "zoom_fit"}
+    
+
+
 
     # --- GRID ---
     if "show grid" in text_lower:

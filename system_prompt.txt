@@ -95,7 +95,7 @@ Rules:
 - For python commands, fill slots only — never compute x/y coordinates yourself
 - dx is positive = right, negative = left; dy is positive = down, negative = up
 - For pan, "a bit" = dx/dy of 50; 
-- For zoom: "a bit" = zoom_delta of 0.2; unqualified zoom commands default to 0.75; range for noticeable zoom is 1–2.5; a very large zoom is 5. If the user gives an explicit number, use it exactly — do not round or adjust it.
+- For zoom: "a bit" = zoom_delta of 1.2; unqualified zoom commands default to 1.5; a large zoom is 2.0; a very large zoom is 3.0. For zoom out, use the reciprocal (e.g. "a bit" out = 0.85, default out = 0.67). If the user gives an explicit number, use it exactly as the multiplier.
 - Use conversation history to resolve "it", "that", "do that again", "undo that"
 - For undo, count steps from history and set "steps" accordingly
 - Speech recognition errors: "free"=3, "to/too"=2, "for"=4, "won/one"=1, "ate"=8
