@@ -35,7 +35,27 @@ GRID_PRECISION_DEFAULT_INDEX = 1  # starts at 100
 
 
 VOICE_LABELS = [
-    "air", "bat", "cap", "drum", "each", "fine", "gust", "harp", "sit", "jury",
-    "crunch", "look", "made", "near", "odd", "pit", "quench", "red", "sun", "trap",
-    "urge", "vest", "whale", "plex", "yank", "zip",
+    "pluto", "moon", "frost", "plant", "sun", "globe", 
+    "quartz", "zinc", "flint", "cloud", "bridge", "steel", "vault", "apple", "hat"
+]
+
+GRAMMAR_KEYWORDS = [
+    # command verbs
+    "move", "resize", "increase", "decrease", "select", "deselect",
+    "zoom", "focus", "pan", "delete", "copy", "cut", "paste", "undo",
+    "rename", "group", "ungroup", "label",
+    # spatial
+    "north", "south", "east", "west", "centre",
+    "cell", "sell", "pixels",
+    # directions
+    "right", "left", "up", "down",
+    # grid/overlay
+    "grid", "overlay", "labels",
+    "show", "hide"
+    # grid modes
+    "alignment", "precision", "fixed", "uniform",
+    # detail
+    "detail", "density", "subdivide", "finer", "coarser",
+    # navigation
+    "fit", "context", "forward", "backward",
 ]
