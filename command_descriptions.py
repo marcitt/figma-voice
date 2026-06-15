@@ -90,4 +90,4 @@ def describe(cmd, result=None):
     if t == "paste":
         return "paste"
 
-    return t or "unknown command"
+    return "not recognised"
