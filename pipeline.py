@@ -33,6 +33,11 @@ grid_mode = GRID_MODE
 grid_subdivisions = GRID_ALIGNMENT_SUBDIVISIONS
 grid_precision_index = GRID_PRECISION_DEFAULT_INDEX
 
+sleeping = True  # start asleep
+
+WAKE_WORDS = ("hey figma", "wake up figma")  # trailing comma or multiple items makes it a tuple
+SLEEP_WORDS = ("sleep", "goodbye figma", "stop listening")
+
 if TRANSCRIBER == "deepgram":
     from transcribers import DeepgramTranscriber
     transcriber = DeepgramTranscriber()
@@ -150,6 +155,7 @@ def llm_command_processing(text, canvas_state, history, model, system_prompt):
         model=model,
         instructions=system_prompt,
         input=history,
+        temperature=0,
         text={"format": {"type": "json_object"}},
     )
 
@@ -202,7 +208,19 @@ def handle_grid_command(cmd, text):
 
 
 def command_worker(text):
-    global history, grid_mode, grid_subdivisions, grid_precision_index
+    global sleeping, history, grid_mode, grid_subdivisions, grid_precision_index
+    t = text.lower().strip()
+
+    if any(w in t for w in WAKE_WORDS):
+        sleeping = False
+        send_hud(transcription=text, action="listening on")
+        return
+    if any(w in t for w in SLEEP_WORDS):
+        sleeping = True
+        send_hud(transcription=text, action="listening off")
+        return
+    if sleeping:
+        return  # silently ignore everything else
 
     send_hud(transcription=text)
 
@@ -216,7 +234,6 @@ def command_worker(text):
         label_nodes()
         return
 
-    # handle grid mode and detail commands
     if isinstance(fixed, dict) and fixed.get("type") == "grid":
         handle_grid_command(fixed, text)
         return
@@ -226,7 +243,7 @@ def command_worker(text):
             send_hud(transcription=text, action=fixed["error"])
             return
         send_command(fixed)
-        send_hud(transcription=text, action=text)
+        send_hud(transcription=text, action=describe(fixed))
         history.append({"role": "user", "content": f"Command: {text}. Respond in JSON"})
         history.append({"role": "assistant", "content": json.dumps(fixed)})
         if len(history) > MAX_HISTORY:
@@ -264,16 +281,11 @@ def command_worker(text):
 
     elif level == "figma":
         if cmd.get("type") == "unknown":
-            print(f"not understood: '{text}'")
             send_hud(transcription=text, action="not recognised")
         else:
             send_command(cmd)
             send_hud(transcription=text, action=describe(cmd))
 
-    # elif level == "system":
-    #     send_command(cmd)
-    #     send_hud(transcription=text, action=describe(cmd))
-  
     elif level == "system":
         if cmd.get("type") == "grid":
             handle_grid_command(cmd, text)
@@ -282,8 +294,7 @@ def command_worker(text):
             send_hud(transcription=text, action=describe(cmd))
 
     else:
-        print(f"unrecognised level: {level}")
-        send_hud(transcription=text, action=f"unrecognised level: {level}")
+        send_hud(transcription=text, action="not recognised")
 
 
 def keyboard_worker():

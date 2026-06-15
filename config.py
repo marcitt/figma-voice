@@ -40,6 +40,8 @@ VOICE_LABELS = [
 ]
 
 GRAMMAR_KEYWORDS = [
+    # wake up
+    "hey", "figma", "listening",
     # command verbs
     "move", "resize", "increase", "decrease", "select", "deselect",
     "zoom", "focus", "pan", "delete", "copy", "cut", "paste", "undo",
