@@ -87,8 +87,8 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
         return {"level": "system", "type": "overlay", "action": "show"}
     if "hide overlay" in text_lower or "close overlay" in text_lower:
         return {"level": "system", "type": "overlay", "action": "hide"}
-    if "toggle overlay" in text_lower:
-        return {"level": "system", "type": "overlay", "action": "toggle"}
+    # if "toggle overlay" in text_lower:
+    #     return {"level": "system", "type": "overlay", "action": "toggle"}
 
     # --- MOVE TO CELL ---
     match = re.match(r"move (.+) to (?:cell|sell) (\d+)$", text_lower)

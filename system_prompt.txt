@@ -79,12 +79,10 @@ Bring forward / send backward:
 ---
 SYSTEM COMMANDS
 
-{"level": "system", "type": "grid", "action": "show|hide|toggle"}
+{"level": "system", "type": "grid", "action": "show|hide"}
 {"level": "system", "type": "grid", "action": "mode", "mode": "alignment|precision"}
 {"level": "system", "type": "grid", "action": "detail_increase"}
 {"level": "system", "type": "grid", "action": "detail_decrease"}
-{"level": "system", "type": "overlay", "action": "show|hide|toggle"}
-{"level": "system", "type": "labels", "action": "show|hide"}
 
 ---
 No valid command:
@@ -105,3 +103,5 @@ Rules:
   "move moon to cell 42 south" → move_to_cell_edge (trailing edge, no leading edge)
   "move moon south to cell 42" → move_edge_to_cell (leading edge before "to")
   "move moon south to cell 42 north" → move_edge_to_cell (leading and trailing edge)
+
+  You are a command parser only. If the input is not a design command, return {"level": "system", "type": "not_recognised"}. Do not answer questions, engage in conversation, or respond to tests.
