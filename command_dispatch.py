@@ -6,8 +6,10 @@ from spatial_commands import (
     move_edge_by_pixels,
     move_by_pixels,
 )
+from config import GRID_ALIGNMENT_SUBDIVISIONS
 
-def dispatch_structured_command(cmd, canvas_state):
+
+def dispatch_structured_command(cmd, canvas_state, grid_mode="alignment", grid_subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, grid_precision_cell_size=100):
     t = cmd.get("type")
     name = cmd.get("node_name", "").lower()
 
@@ -15,7 +17,7 @@ def dispatch_structured_command(cmd, canvas_state):
         cell = cmd.get("cell_number")
         if cell is None:
             return {"error": "couldn't understand which cell to move to"}
-        return move_to_cell(canvas_state, name, cell)
+        return move_to_cell(canvas_state, name, cell, grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     elif t == "move_to_cell_edge":
         cell = cmd.get("cell_number")
@@ -24,7 +26,7 @@ def dispatch_structured_command(cmd, canvas_state):
             return {"error": "couldn't understand which cell to move to"}
         if edge is None:
             return {"error": "couldn't understand which edge of the cell"}
-        return move_to_cell_edge(canvas_state, name, cell, edge.lower())
+        return move_to_cell_edge(canvas_state, name, cell, edge.lower(), grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     elif t == "move_edge_to_cell":
         node_edge = cmd.get("node_edge")
@@ -36,7 +38,7 @@ def dispatch_structured_command(cmd, canvas_state):
             return {"error": "couldn't understand which cell to move to"}
         if cell_edge is None:
             return {"error": "couldn't understand which edge of the cell"}
-        return move_edge_to_cell(canvas_state, name, node_edge.lower(), cell, cell_edge.lower())
+        return move_edge_to_cell(canvas_state, name, node_edge.lower(), cell, cell_edge.lower(), grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     elif t == "resize_edge_to_cell":
         node_edge = cmd.get("node_edge")
@@ -48,7 +50,7 @@ def dispatch_structured_command(cmd, canvas_state):
             return {"error": "couldn't understand which cell to resize to"}
         if cell_edge is None:
             return {"error": "couldn't understand which edge of the cell"}
-        return resize_edge_to_cell(canvas_state, name, node_edge.lower(), cell, cell_edge.lower())
+        return resize_edge_to_cell(canvas_state, name, node_edge.lower(), cell, cell_edge.lower(), grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     elif t == "move_by_pixels":
         dx = cmd.get("dx")
@@ -67,4 +69,4 @@ def dispatch_structured_command(cmd, canvas_state):
         return move_edge_by_pixels(canvas_state, name, node_edge.lower(), amount)
 
     else:
-        return {"error": f"didn't recognise that command"}
+        return {"error": "didn't recognise that command"}

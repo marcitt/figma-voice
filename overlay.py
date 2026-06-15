@@ -21,8 +21,11 @@ from AppKit import (
 )
 from Quartz import CGRectMake, kCGScreenSaverWindowLevel
 
-from grid import NodeEdgeGrid
-from config import CANVAS_TOP_LEFT_X, CANVAS_TOP_LEFT_Y, CANVAS_W, CANVAS_H, GRID_ON_STARTUP
+from grid import get_grid
+from config import (
+    CANVAS_TOP_LEFT_X, CANVAS_TOP_LEFT_Y, CANVAS_W, CANVAS_H, GRID_ON_STARTUP,
+    GRID_MODE, GRID_ALIGNMENT_SUBDIVISIONS, GRID_PRECISION_DEFAULT_INDEX, GRID_PRECISION_CELL_SIZES,
+)
 
 from styles import (
     GRID_LINE_WIDTH, GRID_LINE_COLOR, GRID_FONT_SIZE, GRID_NUMBER_COLOR,
@@ -34,8 +37,12 @@ from styles import (
 
 latest_data = None
 show_grid = GRID_ON_STARTUP
+grid_mode = GRID_MODE
+grid_subdivisions = GRID_ALIGNMENT_SUBDIVISIONS
+grid_precision_cell_size = GRID_PRECISION_CELL_SIZES[GRID_PRECISION_DEFAULT_INDEX]
 
 hud_state = {"transcription": None, "reasoning": None, "action": None}
+
 
 def setup_quit_handler(app):
     NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
@@ -44,23 +51,22 @@ def setup_quit_handler(app):
             app.terminate_(None) if event.charactersIgnoringModifiers() == "q" else None
         ),
     )
-    
+
 class OverlayView(NSView):
     def drawRect_(self, rect):
         data = latest_data
         if not data:
             return
-        
+
         if show_grid:
             self.draw_grid(data)
-            
+
         self.draw_node_labels(data)
         self.draw_hud()
-        
+
     def draw_grid(self, data):
-        
         vp = data.get("viewport", {})
-        
+
         if not vp:
             return
 
@@ -68,7 +74,7 @@ class OverlayView(NSView):
         vp_x = vp.get("x", 0)
         vp_y = vp.get("y", 0)
 
-        grid_data = NodeEdgeGrid().compute(data)
+        grid_data = get_grid(grid_mode, grid_subdivisions, grid_precision_cell_size).compute(data)
 
         number_attrs = NSDictionary.dictionaryWithObjects_forKeys_(
             [NSColor.redColor(), NSFont.boldSystemFontOfSize_(GRID_FONT_SIZE)],
@@ -99,9 +105,8 @@ class OverlayView(NSView):
             NSString.stringWithString_(str(cell["number"])).drawAtPoint_withAttributes_(
                 (sx, sy), number_attrs
             )
-            
+
     def draw_node_labels(self, data):
-        
         nodes = data.get("nodes", [])
         vp = data.get("viewport", {})
         if not vp:
@@ -134,9 +139,8 @@ class OverlayView(NSView):
                 )
             except Exception as e:
                 print(f"error drawing node {node.get('name', '?')}: {e}")
-                
-    def draw_hud(self):
 
+    def draw_hud(self):
         rows = []
         if hud_state["transcription"]:
             rows.append(("heard", hud_state["transcription"]))
@@ -150,7 +154,7 @@ class OverlayView(NSView):
 
         row_h = HUD_LINE_HEIGHT * 2 + HUD_LABEL_GAP + HUD_SECTION_GAP
         box_h = HUD_PADDING * 2 + len(rows) * row_h - HUD_SECTION_GAP
- 
+
         NSColor.colorWithRed_green_blue_alpha_(*HUD_BG_COLOR).setFill()
         NSBezierPath.fillRect_(CGRectMake(HUD_PADDING, HUD_PADDING, HUD_WIDTH, box_h))
 
@@ -180,12 +184,11 @@ class OverlayView(NSView):
                 (HUD_PADDING * 2, cursor_y), value_attrs
             )
             cursor_y -= HUD_LINE_HEIGHT + HUD_SECTION_GAP
-            
-            
-            
+
+
 def ws_listener(view):
     async def listen():
-        global latest_data, show_grid, grid_density
+        global latest_data, show_grid, grid_mode, grid_subdivisions, grid_precision_cell_size
         async with websockets.connect(
             "ws://localhost:8000/ws", ping_interval=20, ping_timeout=10
             # pings are used to keep the overlay alive
@@ -195,20 +198,24 @@ def ws_listener(view):
             while True:
                 data = json.loads(await ws.recv())
 
-                # User Data 
+                # User Data
                 if "command" in data:
                     cmd = data["command"]
-                    
+
                     # Grid commands
                     if cmd.get("type") == "grid":
                         if cmd.get("action") == "show":
                             show_grid = True
                         elif cmd.get("action") == "hide":
                             show_grid = False
+                        elif cmd.get("action") == "mode":
+                            grid_mode = cmd.get("mode", "alignment")
+                            grid_subdivisions = cmd.get("subdivisions", grid_subdivisions)
+                            grid_precision_cell_size = cmd.get("cell_size", grid_precision_cell_size)
                         view.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setNeedsDisplay:", True, False
                         )
-                        
+
                     # HUD commands
                     if cmd.get("type") == "hud":
                         hud_state["transcription"] = cmd.get("transcription")
@@ -218,8 +225,8 @@ def ws_listener(view):
                         view.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setNeedsDisplay:", True, False
                         )
-                        
-                # Plugin data 
+
+                # Plugin data
                 if "nodes" in data:
                     latest_data = data
                     view.performSelectorOnMainThread_withObject_waitUntilDone_(
@@ -227,7 +234,7 @@ def ws_listener(view):
                     )
 
     asyncio.run(listen())
-    
+
 if __name__ == "__main__":
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(0)

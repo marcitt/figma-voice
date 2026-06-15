@@ -9,8 +9,10 @@ from spatial_commands import (
     move_by_pixels,
 )
 
+from config import GRID_ALIGNMENT_SUBDIVISIONS
 
-def regex_command_processing(text, canvas_state):
+
+def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, grid_precision_cell_size=100):
     text_lower = text.lower()
 
     # --- LABEL NODES ---
@@ -29,24 +31,13 @@ def regex_command_processing(text, canvas_state):
     if len(matched) > 1:
         return {"level": "figma", "type": "select", "query": matched}
 
-    # match = re.match(r"select (.+)$", text_lower)
-    # if match:
-    #     name = match.group(1).strip()
-    #     node_names = [n["name"].lower() for n in canvas_state.get("nodes", [])]
-    #     if name in node_names:
-    #         return {"level": "figma", "type": "select", "query": [name]}
-
-    # match = re.match(r"select (.+)$", text_lower)
-    # if match:
-    #     return {"level": "figma", "type": "select", "query": [match.group(1).strip()]}
-
     if "deselect everything" in text_lower:
         return {"level": "figma", "type": "select", "query": []}
 
     # --- FOCUS ---
     for prefix in ("zoom to focus ", "zoom to object ", "zoom to ", "focus "):
         if text_lower.startswith(prefix):
-            remainder = text_lower[len(prefix) :].strip()
+            remainder = text_lower[len(prefix):].strip()
             if not remainder.isdigit():
                 return {"level": "figma", "type": "focus_object", "query": remainder}
 
@@ -55,15 +46,7 @@ def regex_command_processing(text, canvas_state):
         return {"level": "figma", "type": "zoom", "zoom_delta": 0.25}
     if re.search(r"zoom out$", text_lower):
         return {"level": "figma", "type": "zoom", "zoom_delta": -0.25}
-    if any(
-        p in text_lower
-        for p in (
-            "zoom to show everything",
-            "zoom to fit",
-            "zoom to context",
-            "focus context",
-        )
-    ):
+    if any(p in text_lower for p in ("zoom to show everything", "zoom to fit", "zoom to context", "focus context")):
         return {"level": "figma", "type": "zoom_fit"}
 
     # --- GRID ---
@@ -71,6 +54,18 @@ def regex_command_processing(text, canvas_state):
         return {"level": "system", "type": "grid", "action": "show"}
     if "hide grid" in text_lower or "hybrid" in text_lower or "hydrate" in text_lower:
         return {"level": "system", "type": "grid", "action": "hide"}
+
+    # --- GRID MODE ---
+    if any(p in text_lower for p in ("alignment grid", "snap grid", "object grid")):
+        return {"level": "system", "type": "grid", "action": "mode_alignment"}
+    if any(p in text_lower for p in ("precision grid", "fixed grid", "uniform grid")):
+        return {"level": "system", "type": "grid", "action": "mode_precision"}
+
+    # --- GRID DETAIL ---
+    if any(p in text_lower for p in ("more detail", "increase grid", "increase density", "increase grid density", "subdivide")):
+        return {"level": "system", "type": "grid", "action": "detail_increase"}
+    if any(p in text_lower for p in ("less detail", "decrease grid", "decrease density", "decrease grid density", "coarser grid")):
+        return {"level": "system", "type": "grid", "action": "detail_decrease"}
 
     # --- LABELS ---
     if "show labels" in text_lower:
@@ -89,77 +84,43 @@ def regex_command_processing(text, canvas_state):
     # --- MOVE TO CELL ---
     match = re.match(r"move (.+) to (?:cell|sell) (\d+)$", text_lower)
     if match:
-        return move_to_cell(canvas_state, match.group(1).strip(), int(match.group(2)))
+        return move_to_cell(canvas_state, match.group(1).strip(), int(match.group(2)), grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     # --- MOVE NODE TO CELL EDGE ---
-    match = re.match(
-        r"move (.+) to (?:cell|sell) (\d+) (north|south|east|west)$", text_lower
-    )
+    match = re.match(r"move (.+) to (?:cell|sell) (\d+) (north|south|east|west)$", text_lower)
     if match:
-        return move_to_cell_edge(
-            canvas_state, match.group(1).strip(), int(match.group(2)), match.group(3)
-        )
+        return move_to_cell_edge(canvas_state, match.group(1).strip(), int(match.group(2)), match.group(3), grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     # --- MOVE EDGE TO CELL ---
-    match = re.match(
-        r"move (.+?) (north|south|east|west) to (?:cell|sell) (\d+)(?: (north|south|east|west))?$",
-        text_lower,
-    )
+    match = re.match(r"move (.+?) (north|south|east|west) to (?:cell|sell) (\d+)(?: (north|south|east|west))?$", text_lower)
     if match:
-        return move_edge_to_cell(
-            canvas_state,
-            match.group(1).strip(),
-            match.group(2),
-            int(match.group(3)),
-            match.group(4) or "centre",
-        )
+        return move_edge_to_cell(canvas_state, match.group(1).strip(), match.group(2), int(match.group(3)), match.group(4) or "centre", grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     # --- MOVE BY PIXELS ---
     match = re.match(r"move (.+) (\d+) pixels? (right|left|up|down)$", text_lower)
     if match:
-        name, amount, direction = (
-            match.group(1).strip(),
-            int(match.group(2)),
-            match.group(3),
-        )
+        name, amount, direction = match.group(1).strip(), int(match.group(2)), match.group(3)
         dx = {"right": amount, "left": -amount}.get(direction, 0)
         dy = {"down": amount, "up": -amount}.get(direction, 0)
         return move_by_pixels(canvas_state, name, dx, dy)
 
     # --- RESIZE EDGE TO CELL ---
-    match = re.match(
-        r"resize (.+?) (north|south|east|west) to (?:cell|sell) (\d+)(?: (north|south|east|west))?$",
-        text_lower,
-    )
+    match = re.match(r"resize (.+?) (north|south|east|west) to (?:cell|sell) (\d+)(?: (north|south|east|west))?$", text_lower)
     if match:
-        return resize_edge_to_cell(
-            canvas_state,
-            match.group(1).strip(),
-            match.group(2),
-            int(match.group(3)),
-            match.group(4) or "centre",
-        )
+        return resize_edge_to_cell(canvas_state, match.group(1).strip(), match.group(2), int(match.group(3)), match.group(4) or "centre", grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     # --- RESIZE NODE TO CELL EDGE ---
-    match = re.match(
-        r"resize (.+) to (?:cell|sell) (\d+) (north|south|east|west)$", text_lower
-    )
+    match = re.match(r"resize (.+) to (?:cell|sell) (\d+) (north|south|east|west)$", text_lower)
     if match:
         edge = match.group(3)
-        return resize_edge_to_cell(
-            canvas_state, match.group(1).strip(), edge, int(match.group(2)), edge
-        )
+        return resize_edge_to_cell(canvas_state, match.group(1).strip(), edge, int(match.group(2)), edge, grid_mode, grid_subdivisions, grid_precision_cell_size)
 
     # --- INCREASE/DECREASE EDGE BY PIXELS ---
-    match = re.match(
-        r"(increase|decrease) (.+) (north|south|east|west) (\d+) pixels?$", text_lower
-    )
+    match = re.match(r"(increase|decrease) (.+) (north|south|east|west) (\d+) pixels?$", text_lower)
     if match:
         amount = int(match.group(4))
         if match.group(1) == "decrease":
             amount = -amount
-        return move_edge_by_pixels(
-            canvas_state, match.group(2).strip(), match.group(3), amount
-        )
+        return move_edge_by_pixels(canvas_state, match.group(2).strip(), match.group(3), amount)
 
     return None

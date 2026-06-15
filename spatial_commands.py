@@ -1,10 +1,11 @@
-from grid import NodeEdgeGrid
+from grid import get_grid
+from config import GRID_ALIGNMENT_SUBDIVISIONS
 
 
-def get_cell(canvas_state, cell_number):
+def get_cell(canvas_state, cell_number, mode="alignment", subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, precision_cell_size=100):
     vp = canvas_state.get("viewport", {})
     zoom = vp.get("zoom", 1)
-    grid_data = NodeEdgeGrid().compute(canvas_state)
+    grid_data = get_grid(mode, subdivisions, precision_cell_size).compute(canvas_state)
     return next(
         (c for c in grid_data.visible_cells(zoom) if c["number"] == cell_number), None
     )
@@ -17,8 +18,8 @@ def get_node(canvas_state, node_name):
     )
 
 
-def move_to_cell(canvas_state, node_name, cell_number):
-    cell = get_cell(canvas_state, cell_number)
+def move_to_cell(canvas_state, node_name, cell_number, mode="alignment", subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, precision_cell_size=100):
+    cell = get_cell(canvas_state, cell_number, mode, subdivisions, precision_cell_size)
     node = get_node(canvas_state, node_name)
     if not node:
         return {"error": f"node '{node_name}' not found"}
@@ -33,8 +34,8 @@ def move_to_cell(canvas_state, node_name, cell_number):
     }
 
 
-def move_to_cell_edge(canvas_state, node_name, cell_number, cell_edge):
-    cell = get_cell(canvas_state, cell_number)
+def move_to_cell_edge(canvas_state, node_name, cell_number, cell_edge, mode="alignment", subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, precision_cell_size=100):
+    cell = get_cell(canvas_state, cell_number, mode, subdivisions, precision_cell_size)
     node = get_node(canvas_state, node_name)
     if not node:
         return {"error": f"node '{node_name}' not found"}
@@ -61,8 +62,8 @@ def move_to_cell_edge(canvas_state, node_name, cell_number, cell_edge):
     }
 
 
-def move_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge):
-    cell = get_cell(canvas_state, cell_number)
+def move_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge, mode="alignment", subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, precision_cell_size=100):
+    cell = get_cell(canvas_state, cell_number, mode, subdivisions, precision_cell_size)
     node = get_node(canvas_state, node_name)
     if not node:
         return {"error": f"node '{node_name}' not found"}
@@ -94,8 +95,8 @@ def move_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge
     }
 
 
-def resize_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge):
-    cell = get_cell(canvas_state, cell_number)
+def resize_edge_to_cell(canvas_state, node_name, node_edge, cell_number, cell_edge, mode="alignment", subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, precision_cell_size=100):
+    cell = get_cell(canvas_state, cell_number, mode, subdivisions, precision_cell_size)
     node = get_node(canvas_state, node_name)
     if not node:
         return {"error": f"node '{node_name}' not found"}

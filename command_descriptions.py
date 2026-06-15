@@ -57,15 +57,19 @@ def describe(cmd, result=None):
         d = cmd.get("zoom_delta", 0)
         return f"zoom {'in' if d > 0 else 'out'} by {abs(d)}"
 
-    if t == "undo":
-        return f"undo {cmd.get('steps', 1)} step(s)"
+    # if t == "undo":
+    #     return f"undo {cmd.get('steps', 1)} step(s)"
 
     if t == "rename":
         name, new_name = cmd.get("query") or "?", cmd.get("name") or "?"
         return f"rename {name} to {new_name}"
 
     if t == "grid":
-        return f"{cmd.get('action') or '?'} grid"
+        action = cmd.get("action") or "?"
+        if action == "subdivisions":
+            return f"subdivisions set to {cmd.get('value', '?')}"
+        return f"{action} grid"
+    
 
     if t == "labels":
         return f"{cmd.get('action') or '?'} labels"

@@ -66,9 +66,6 @@ Cut:
 Rename:
 {"level": "figma", "type": "rename", "query": "Layer Name", "name": "New Name"}
 
-Undo (n steps):
-{"level": "figma", "type": "undo", "steps": number}
-
 Group:
 {"level": "figma", "type": "group", "query": ["Layer 1", "Layer 2"]}
 
@@ -83,8 +80,10 @@ Bring forward / send backward:
 SYSTEM COMMANDS
 
 {"level": "system", "type": "grid", "action": "show|hide|toggle"}
+{"level": "system", "type": "grid", "action": "mode", "mode": "alignment|precision"}
+{"level": "system", "type": "grid", "action": "detail_increase"}
+{"level": "system", "type": "grid", "action": "detail_decrease"}
 {"level": "system", "type": "overlay", "action": "show|hide|toggle"}
-{"level": "system", "type": "grid", "action": "density", "value": number}
 {"level": "system", "type": "labels", "action": "show|hide"}
 
 ---
