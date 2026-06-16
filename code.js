@@ -86,8 +86,8 @@ async function handleCommand(msg) {
         }
 
         case "zoom":
-            // figma.viewport.zoom = figma.viewport.zoom + msg.zoom_delta;
-            figma.viewport.zoom = figma.viewport.zoom * msg.zoom_delta;
+            figma.viewport.zoom = figma.viewport.zoom + msg.zoom_delta;
+            // figma.viewport.zoom = figma.viewport.zoom * msg.zoom_delta;
             break;
 
         case "pan": {

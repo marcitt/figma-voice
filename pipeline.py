@@ -10,7 +10,7 @@ from openai import OpenAI
 import random
 
 from config import (
-    MAX_HISTORY, MODEL, VOICE_LABELS, TRANSCRIBER, LISTENING_ON_STARTUP,
+    MAX_HISTORY, MODEL, REASONING_MODEL, VOICE_LABELS, TRANSCRIBER, LISTENING_ON_STARTUP,
     GRID_MODE, GRID_ALIGNMENT_SUBDIVISIONS, GRID_ALIGNMENT_SUBDIVISIONS_MAX,
     GRID_ALIGNMENT_SUBDIVISIONS_MIN, GRID_PRECISION_CELL_SIZES, GRID_PRECISION_DEFAULT_INDEX,
 )
@@ -25,7 +25,8 @@ client = OpenAI()
 with open("system_prompt.txt") as f:
     SYSTEM_PROMPT = f.read()
 
-history = []
+history = []          # lean: layer names + command only — used for normal LLM calls
+detailed_history = [] # rich: full canvas state per turn — used for undo LLM fallback
 canvas_state = {}
 text_queue = queue.Queue()  # input sources put text here - thread safe
 
@@ -33,9 +34,9 @@ grid_mode = GRID_MODE
 grid_subdivisions = GRID_ALIGNMENT_SUBDIVISIONS
 grid_precision_index = GRID_PRECISION_DEFAULT_INDEX
 
-sleeping = True  # start asleep
+sleeping = False  # start awake
 
-WAKE_WORDS = ("hey figma", "wake up figma")  # trailing comma or multiple items makes it a tuple
+WAKE_WORDS = ("hey figma", "wake up figma")
 SLEEP_WORDS = ("sleep", "goodbye figma", "stop listening")
 
 if TRANSCRIBER == "deepgram":
@@ -53,6 +54,44 @@ transcriber.set_listening(LISTENING_ON_STARTUP)
 ws = None
 labelled = True
 
+# UNDO SNAPSHOTS
+
+previous_viewport = None      # {x, y, zoom}
+previous_node = None          # {name, x, y, width, height}
+previous_selection = None     # [list of node names]
+last_snapshot_type = None     # "viewport", "node", or "selection"
+
+
+def push_viewport_snapshot():
+    global previous_viewport, last_snapshot_type
+    vp = canvas_state.get("viewport")
+    if vp:
+        # viewport x/y is top-left of bounds — convert to center for set_viewport
+        center_x = vp["x"] + vp["width"] / 2
+        center_y = vp["y"] + vp["height"] / 2
+        previous_viewport = {"x": center_x, "y": center_y, "zoom": vp["zoom"]}
+        last_snapshot_type = "viewport"
+        print(f"[UNDO] viewport snapshot: center=({center_x:.1f}, {center_y:.1f}) zoom={vp['zoom']:.2f}")
+    else:
+        print("[UNDO] no viewport in canvas_state")
+
+
+def push_node_snapshot(name):
+    global previous_node, last_snapshot_type
+    nodes = canvas_state.get("nodes", [])
+    for n in nodes:
+        if n["name"].lower() == name.lower():
+            previous_node = {"name": n["name"], "x": n["x"], "y": n["y"], "width": n["width"], "height": n["height"]}
+            last_snapshot_type = "node"
+            return
+
+
+def push_selection_snapshot(names):
+    global previous_selection, last_snapshot_type
+    previous_selection = list(names) if names else []
+    last_snapshot_type = "selection"
+
+
 # WEBSOCKETS
 
 
@@ -60,7 +99,6 @@ def on_ws_message(ws_app, raw):
     global canvas_state, labelled
     data = json.loads(raw)
 
-    # updates canvas state when new data is sent from the plugin
     if "nodes" in data:
         canvas_state = data
         print(
@@ -72,7 +110,6 @@ def on_ws_message(ws_app, raw):
             labelled = True
 
 
-#  creates a WebSocketApp - persistent connection to the backend - listens for incoming messages
 def ws_worker():
     global ws
     ws = websocket.WebSocketApp(
@@ -83,11 +120,8 @@ def ws_worker():
     ws.run_forever(ping_interval=20, ping_timeout=10)
 
 
-# sends commands to the backend - the backend broadcasts it to all other connected clients
 def send_command(json_data):
-    if (
-        ws and ws.sock and ws.sock.connected
-    ):  # guard (please look into this in a bit more detail)
+    if ws and ws.sock and ws.sock.connected:
         ws.send(json.dumps({"command": json_data}))
     else:
         print("ws not connected, command dropped")
@@ -103,10 +137,8 @@ def label_nodes():
         return None
 
     shuffled = random.sample(VOICE_LABELS, len(nodes))
-
     mapping = {label: node for label, node in zip(shuffled, nodes)}
 
-    # send a rename command for each node
     for label, node in mapping.items():
         send_command(
             {
@@ -145,15 +177,20 @@ def send_hud(transcription, reasoning=None, action=None):
     )
 
 
-def llm_command_processing(text, canvas_state, history, model, system_prompt):
-    layer_names = [n["name"] for n in canvas_state.get("nodes", [])]
-    content = f"Layer names: {layer_names}\n\nCommand: {text}. Respond in JSON"
+# LLM
 
-    history.append({"role": "user", "content": content})
+
+def llm_command_processing(text):
+    layer_names = [n["name"] for n in canvas_state.get("nodes", [])]
+    lean_content = f"Layer names: {layer_names}\n\nCommand: {text}. Respond in JSON"
+    rich_content = f"Layer names: {layer_names}\nCanvas state: {canvas_state}\n\nCommand: {text}. Respond in JSON"
+
+    history.append({"role": "user", "content": lean_content})
+    detailed_history.append({"role": "user", "content": rich_content})
 
     response = client.responses.create(
-        model=model,
-        instructions=system_prompt,
+        model=MODEL,
+        instructions=SYSTEM_PROMPT,
         input=history,
         temperature=0,
         text={"format": {"type": "json_object"}},
@@ -161,8 +198,47 @@ def llm_command_processing(text, canvas_state, history, model, system_prompt):
 
     reply = response.output_text.strip()
     history.append({"role": "assistant", "content": reply})
+    detailed_history.append({"role": "assistant", "content": reply})
+
+    if len(history) > MAX_HISTORY:
+        history[:] = history[-MAX_HISTORY:]
+    if len(detailed_history) > MAX_HISTORY:
+        detailed_history[:] = detailed_history[-MAX_HISTORY:]
+
     print(f"\nllm: {reply}\n")
     return reply
+
+
+# UNDO
+
+
+VIEWPORT_COMMAND_TYPES = ("focus_object", "zoom_fit", "zoom", "pan")
+NODE_COMMAND_TYPES = ("move", "move_absolute", "move_to_cell", "move_to_cell_edge",
+                      "move_edge_to_cell", "move_by_pixels", "move_edge_by_pixels",
+                      "resize_scale", "resize_delta", "resize_edge_to_cell")
+SELECTION_COMMAND_TYPES = ("select",)
+
+
+def handle_undo(text):
+    if last_snapshot_type == "node" and previous_node:
+        send_command({"level": "figma", "type": "move_absolute", "query": previous_node["name"], "x": previous_node["x"], "y": previous_node["y"]})
+        send_command({"level": "figma", "type": "resize_absolute", "query": previous_node["name"], "width": previous_node["width"], "height": previous_node["height"]})
+        send_hud(transcription=text, action=describe({"type": "undo", "kind": "node", "target": previous_node["name"]}))
+
+    elif last_snapshot_type == "viewport" and previous_viewport:
+        send_command({"level": "figma", "type": "set_viewport", "x": previous_viewport["x"], "y": previous_viewport["y"], "zoom": previous_viewport["zoom"]})
+        send_hud(transcription=text, action=describe({"type": "undo", "kind": "viewport"}))
+
+    elif last_snapshot_type == "selection" and previous_selection is not None:
+        send_command({"level": "figma", "type": "select", "query": previous_selection})
+        send_hud(transcription=text, action=describe({"type": "undo", "kind": "selection"}))
+
+    else:
+        send_hud(transcription=text, action=describe({"type": "undo"}))
+
+
+# GRID
+
 
 def handle_grid_command(cmd, text):
     global grid_mode, grid_subdivisions, grid_precision_index
@@ -171,44 +247,58 @@ def handle_grid_command(cmd, text):
     if action == "mode_alignment":
         grid_mode = "alignment"
         send_command({"level": "system", "type": "grid", "action": "mode", "mode": "alignment", "subdivisions": grid_subdivisions})
-        send_hud(transcription=text, action="switched to alignment grid")
+        send_hud(transcription=text, action=describe({"type": "grid", "action": "mode_alignment"}))
 
     elif action == "mode_precision":
         grid_mode = "precision"
         cell_size = GRID_PRECISION_CELL_SIZES[grid_precision_index]
         send_command({"level": "system", "type": "grid", "action": "mode", "mode": "precision", "cell_size": cell_size})
-        send_hud(transcription=text, action="switched to precision grid")
+        send_hud(transcription=text, action=describe({"type": "grid", "action": "mode_precision"}))
 
     elif action == "detail_increase":
         if grid_mode == "alignment":
             grid_subdivisions = min(grid_subdivisions + 1, GRID_ALIGNMENT_SUBDIVISIONS_MAX)
             send_command({"level": "system", "type": "grid", "action": "mode", "mode": "alignment", "subdivisions": grid_subdivisions})
-            send_hud(transcription=text, action=f"alignment grid detail {grid_subdivisions}")
+            send_hud(transcription=text, action=describe({"type": "grid", "action": "detail_increase", "value": grid_subdivisions}))
         else:
             grid_precision_index = min(grid_precision_index + 1, len(GRID_PRECISION_CELL_SIZES) - 1)
             cell_size = GRID_PRECISION_CELL_SIZES[grid_precision_index]
             send_command({"level": "system", "type": "grid", "action": "mode", "mode": "precision", "cell_size": cell_size})
-            send_hud(transcription=text, action=f"precision grid cell size {cell_size}")
+            send_hud(transcription=text, action=describe({"type": "grid", "action": "detail_increase", "value": cell_size}))
 
     elif action == "detail_decrease":
         if grid_mode == "alignment":
             grid_subdivisions = max(grid_subdivisions - 1, GRID_ALIGNMENT_SUBDIVISIONS_MIN)
             send_command({"level": "system", "type": "grid", "action": "mode", "mode": "alignment", "subdivisions": grid_subdivisions})
-            send_hud(transcription=text, action=f"alignment grid detail {grid_subdivisions}")
+            send_hud(transcription=text, action=describe({"type": "grid", "action": "detail_decrease", "value": grid_subdivisions}))
         else:
             grid_precision_index = max(grid_precision_index - 1, 0)
             cell_size = GRID_PRECISION_CELL_SIZES[grid_precision_index]
             send_command({"level": "system", "type": "grid", "action": "mode", "mode": "precision", "cell_size": cell_size})
-            send_hud(transcription=text, action=f"precision grid cell size {cell_size}")
+            send_hud(transcription=text, action=describe({"type": "grid", "action": "detail_decrease", "value": cell_size}))
 
     else:
-        # show/hide/toggle pass straight through
         send_command(cmd)
         send_hud(transcription=text, action=describe(cmd))
 
 
+# COMMAND WORKER
+
+
+def snapshot_for_command(cmd):
+    """Push node or selection snapshot before a command executes."""
+    t = cmd.get("type")
+    if t in NODE_COMMAND_TYPES:
+        name = cmd.get("node_name") or cmd.get("query")
+        if name:
+            push_node_snapshot(name)
+    elif t in SELECTION_COMMAND_TYPES:
+        current_selection = [n["name"] for n in canvas_state.get("nodes", []) if n.get("selected")]
+        push_selection_snapshot(current_selection)
+
+
 def command_worker(text):
-    global sleeping, history, grid_mode, grid_subdivisions, grid_precision_index
+    global sleeping, history, detailed_history, grid_mode, grid_subdivisions, grid_precision_index
     t = text.lower().strip()
 
     if any(w in t for w in WAKE_WORDS):
@@ -238,36 +328,46 @@ def command_worker(text):
         handle_grid_command(fixed, text)
         return
 
+    if isinstance(fixed, dict) and fixed.get("type") == "undo":
+        handle_undo(text)
+        return
+
+    # snapshot viewport after undo check so "undo" doesn't overwrite the previous state
+    push_viewport_snapshot()
+
     if fixed:
         if fixed.get("error"):
             send_hud(transcription=text, action=fixed["error"])
             return
+        snapshot_for_command(fixed)
         send_command(fixed)
         send_hud(transcription=text, action=describe(fixed))
-        history.append({"role": "user", "content": f"Command: {text}. Respond in JSON"})
-        history.append({"role": "assistant", "content": json.dumps(fixed)})
+        layer_names = [n["name"] for n in canvas_state.get("nodes", [])]
+        reply = json.dumps(fixed)
+        history.append({"role": "user", "content": f"Layer names: {layer_names}\n\nCommand: {text}. Respond in JSON"})
+        history.append({"role": "assistant", "content": reply})
+        detailed_history.append({"role": "user", "content": f"Layer names: {layer_names}\nCanvas state: {canvas_state}\n\nCommand: {text}. Respond in JSON"})
+        detailed_history.append({"role": "assistant", "content": reply})
         if len(history) > MAX_HISTORY:
-            history = history[-MAX_HISTORY:]
+            history[:] = history[-MAX_HISTORY:]
+        if len(detailed_history) > MAX_HISTORY:
+            detailed_history[:] = detailed_history[-MAX_HISTORY:]
         return
 
     # step 2 - LLM
     send_hud(transcription=text, reasoning="reasoning...")
-    text_out = llm_command_processing(
-        text, canvas_state, history, model=MODEL, system_prompt=SYSTEM_PROMPT
-    )
+    text_out = llm_command_processing(text)
     cmd = parse_output(text_out)
 
     if cmd is None:
         send_hud(transcription=text, action="could not parse response")
         return
 
-    if len(history) > MAX_HISTORY:
-        history = history[-MAX_HISTORY:]
-
     # step 3 - route by level
     level = cmd.get("level")
 
     if level == "python":
+        snapshot_for_command(cmd)
         result = dispatch_structured_command(
             cmd, canvas_state, grid_mode, grid_subdivisions,
             GRID_PRECISION_CELL_SIZES[grid_precision_index]
@@ -281,8 +381,9 @@ def command_worker(text):
 
     elif level == "figma":
         if cmd.get("type") == "unknown":
-            send_hud(transcription=text, action="not recognised")
+            send_hud(transcription=text, action=describe({"type": "not_recognised"}))
         else:
+            snapshot_for_command(cmd)
             send_command(cmd)
             send_hud(transcription=text, action=describe(cmd))
 
@@ -294,7 +395,7 @@ def command_worker(text):
             send_hud(transcription=text, action=describe(cmd))
 
     else:
-        send_hud(transcription=text, action="not recognised")
+        send_hud(transcription=text, action=describe({"type": "not_recognised"}))
 
 
 def keyboard_worker():
@@ -323,9 +424,6 @@ time.sleep(0.5)  # give ws a moment to connect before other workers start
 threading.Thread(target=transcriber.start, args=(text_queue,), daemon=True).start()
 threading.Thread(target=keyboard_worker, daemon=True).start()
 threading.Thread(target=dispatcher_worker, daemon=True).start()
-
-# pyautogui.moveTo(100, 150)
-# pyautogui.click()
 
 try:
     while True:

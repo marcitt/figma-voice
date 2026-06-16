@@ -14,6 +14,10 @@ from config import GRID_ALIGNMENT_SUBDIVISIONS
 
 def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, grid_precision_cell_size=100):
     text_lower = text.lower()
+    
+     # --- UNDO ---
+    if "undo" in text_lower:
+        return {"level": "system", "type": "undo"}
 
     # --- LABEL NODES ---
     if "label nodes" in text_lower:
@@ -54,10 +58,21 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
             if not remainder.isdigit():
                 return {"level": "figma", "type": "focus_object", "query": remainder}
 
+    # --- PAN ---
+    match = re.match(r"move (left|right|up|down)(?: (\d+))?$", text_lower)
+    if match:
+        direction, amount = match.group(1), int(match.group(2) or 200)
+        dx = {"right": amount, "left": -amount}.get(direction, 0)
+        dy = {"down": amount, "up": -amount}.get(direction, 0)
+        return {"level": "figma", "type": "pan", "dx": dx, "dy": dy}
+
+    match = re.match(r"pan (left|right|up|down)(?: (\d+))?$", text_lower)
+    if match:
+        direction, amount = match.group(1), int(match.group(2) or 200)
+        dx = {"right": amount, "left": -amount}.get(direction, 0)
+        dy = {"down": amount, "up": -amount}.get(direction, 0)
+        return {"level": "figma", "type": "pan", "dx": dx, "dy": dy}
     
-
-
-
     # --- GRID ---
     if "show grid" in text_lower:
         return {"level": "system", "type": "grid", "action": "show"}
