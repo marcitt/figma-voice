@@ -59,7 +59,8 @@ labelled = True
 previous_viewport = None      # {x, y, zoom}
 previous_node = None          # {name, x, y, width, height}
 previous_selection = None     # [list of node names]
-last_snapshot_type = None     # "viewport", "node", or "selection"
+previous_overlay = None       # {grid_mode, grid_subdivisions, grid_precision_index}
+last_snapshot_type = None     # "viewport", "node", "selection", or "overlay"
 
 
 def push_viewport_snapshot():
@@ -90,6 +91,16 @@ def push_selection_snapshot(names):
     global previous_selection, last_snapshot_type
     previous_selection = list(names) if names else []
     last_snapshot_type = "selection"
+
+
+def push_overlay_snapshot():
+    global previous_overlay, last_snapshot_type
+    previous_overlay = {
+        "grid_mode": grid_mode,
+        "grid_subdivisions": grid_subdivisions,
+        "grid_precision_index": grid_precision_index,
+    }
+    last_snapshot_type = "overlay"
 
 
 # WEBSOCKETS
@@ -233,6 +244,18 @@ def handle_undo(text):
         send_command({"level": "figma", "type": "select", "query": previous_selection})
         send_hud(transcription=text, action=describe({"type": "undo", "kind": "selection"}))
 
+    elif last_snapshot_type == "overlay" and previous_overlay:
+        global grid_mode, grid_subdivisions, grid_precision_index
+        grid_mode = previous_overlay["grid_mode"]
+        grid_subdivisions = previous_overlay["grid_subdivisions"]
+        grid_precision_index = previous_overlay["grid_precision_index"]
+        cell_size = GRID_PRECISION_CELL_SIZES[grid_precision_index]
+        if grid_mode == "alignment":
+            send_command({"level": "system", "type": "grid", "action": "mode", "mode": "alignment", "subdivisions": grid_subdivisions})
+        else:
+            send_command({"level": "system", "type": "grid", "action": "mode", "mode": "precision", "cell_size": cell_size})
+        send_hud(transcription=text, action=describe({"type": "undo", "kind": "overlay"}))
+
     else:
         send_hud(transcription=text, action=describe({"type": "undo"}))
 
@@ -243,6 +266,8 @@ def handle_undo(text):
 def handle_grid_command(cmd, text):
     global grid_mode, grid_subdivisions, grid_precision_index
     action = cmd.get("action")
+
+    push_overlay_snapshot()  # snapshot before any state changes
 
     if action == "mode_alignment":
         grid_mode = "alignment"
