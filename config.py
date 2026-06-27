@@ -9,13 +9,14 @@ CANVAS_W = 1470
 CANVAS_H = 956 - 75.5
 
 MODEL = "gpt-5.4-nano"
+REASONING_MODEL = "gpt-4o-mini"
 MAX_HISTORY = 10
 
 LISTENING_ON_STARTUP = True
 GRID_ON_STARTUP = True
 
 GRID_ALIGNMENT_SUBDIVISIONS = 1      # 1-3
-GRID_ALIGNMENT_SUBDIVISIONS_MAX = 3
+GRID_ALIGNMENT_SUBDIVISIONS_MAX = 10
 GRID_ALIGNMENT_SUBDIVISIONS_MIN = 1
 
 GRID_MAX_CELLS_FOR_LABELS = 1000
@@ -40,6 +41,8 @@ VOICE_LABELS = [
 ]
 
 GRAMMAR_KEYWORDS = [
+    # wake up
+    "hey", "figma", "listening",
     # command verbs
     "move", "resize", "increase", "decrease", "select", "deselect",
     "zoom", "focus", "pan", "delete", "copy", "cut", "paste", "undo",

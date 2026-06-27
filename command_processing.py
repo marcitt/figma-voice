@@ -14,6 +14,15 @@ from config import GRID_ALIGNMENT_SUBDIVISIONS
 
 def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, grid_precision_cell_size=100):
     text_lower = text.lower()
+    
+    
+    
+    if len(text_lower.split()) > 8 or len(text_lower) > 60:
+        return None  # fall through to LLM or not_recognised
+    
+     # --- UNDO ---
+    if "undo" in text_lower:
+        return {"level": "system", "type": "undo"}
 
     # --- LABEL NODES ---
     if "label nodes" in text_lower:
@@ -34,21 +43,41 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
     if "deselect everything" in text_lower:
         return {"level": "figma", "type": "select", "query": []}
 
+    # --- ZOOM ---
+    # this needs to come before "zoom to " to prevent it getting caught
+    
+    if re.search(r"zoom in$", text_lower):
+        return {"level": "figma", "type": "zoom", "zoom_delta": 0.5}
+    if re.search(r"zoom out$", text_lower):
+        return {"level": "figma", "type": "zoom", "zoom_delta": -0.5}
+    
+    if any(p in text_lower for p in ("zoom to show everything", "zoom to fit", "zoom to context", "focus context")):
+        print(f"[DEBUG] text_lower: {repr(text_lower)}")
+        return {"level": "figma", "type": "zoom_fit"}
+    
     # --- FOCUS ---
+    
     for prefix in ("zoom to focus ", "zoom to object ", "zoom to ", "focus "):
         if text_lower.startswith(prefix):
             remainder = text_lower[len(prefix):].strip()
             if not remainder.isdigit():
                 return {"level": "figma", "type": "focus_object", "query": remainder}
 
-    # --- ZOOM ---
-    if re.search(r"zoom in$", text_lower):
-        return {"level": "figma", "type": "zoom", "zoom_delta": 0.25}
-    if re.search(r"zoom out$", text_lower):
-        return {"level": "figma", "type": "zoom", "zoom_delta": -0.25}
-    if any(p in text_lower for p in ("zoom to show everything", "zoom to fit", "zoom to context", "focus context")):
-        return {"level": "figma", "type": "zoom_fit"}
+    # --- PAN ---
+    match = re.match(r"move (left|right|up|down)(?: (\d+))?$", text_lower)
+    if match:
+        direction, amount = match.group(1), int(match.group(2) or 200)
+        dx = {"right": amount, "left": -amount}.get(direction, 0)
+        dy = {"down": amount, "up": -amount}.get(direction, 0)
+        return {"level": "figma", "type": "pan", "dx": dx, "dy": dy}
 
+    match = re.match(r"pan (left|right|up|down)(?: (\d+))?$", text_lower)
+    if match:
+        direction, amount = match.group(1), int(match.group(2) or 200)
+        dx = {"right": amount, "left": -amount}.get(direction, 0)
+        dy = {"down": amount, "up": -amount}.get(direction, 0)
+        return {"level": "figma", "type": "pan", "dx": dx, "dy": dy}
+    
     # --- GRID ---
     if "show grid" in text_lower:
         return {"level": "system", "type": "grid", "action": "show"}
@@ -58,8 +87,8 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
     # --- GRID MODE ---
     if any(p in text_lower for p in ("alignment grid", "snap grid", "object grid")):
         return {"level": "system", "type": "grid", "action": "mode_alignment"}
-    if any(p in text_lower for p in ("precision grid", "fixed grid", "uniform grid")):
-        return {"level": "system", "type": "grid", "action": "mode_precision"}
+    # if any(p in text_lower for p in ("precision grid", "fixed grid", "uniform grid")):
+    #     return {"level": "system", "type": "grid", "action": "mode_precision"}
 
     # --- GRID DETAIL ---
     if any(p in text_lower for p in ("more detail", "increase grid", "increase density", "increase grid density", "subdivide")):
@@ -78,8 +107,8 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
         return {"level": "system", "type": "overlay", "action": "show"}
     if "hide overlay" in text_lower or "close overlay" in text_lower:
         return {"level": "system", "type": "overlay", "action": "hide"}
-    if "toggle overlay" in text_lower:
-        return {"level": "system", "type": "overlay", "action": "toggle"}
+    # if "toggle overlay" in text_lower:
+    #     return {"level": "system", "type": "overlay", "action": "toggle"}
 
     # --- MOVE TO CELL ---
     match = re.match(r"move (.+) to (?:cell|sell) (\d+)$", text_lower)

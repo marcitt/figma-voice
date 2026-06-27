@@ -35,6 +35,8 @@ from styles import (
     HUD_PADDING, HUD_LINE_HEIGHT, HUD_LABEL_GAP, HUD_SECTION_GAP,
 )
 
+GRID_MAJOR_LINE_WIDTH = GRID_LINE_WIDTH * 2.2  # alignment-level lines drawn thicker
+
 latest_data = None
 show_grid = GRID_ON_STARTUP
 grid_mode = GRID_MODE
@@ -51,6 +53,7 @@ def setup_quit_handler(app):
             app.terminate_(None) if event.charactersIgnoringModifiers() == "q" else None
         ),
     )
+
 
 class OverlayView(NSView):
     def drawRect_(self, rect):
@@ -81,12 +84,16 @@ class OverlayView(NSView):
             [NSForegroundColorAttributeName, NSFontAttributeName],
         )
 
-        NSColor.colorWithRed_green_blue_alpha_(*GRID_LINE_COLOR).setStroke()
+        major_x_set = set(grid_data.major_x_lines) if grid_data.major_x_lines else set(grid_data.x_lines)
+        major_y_set = set(grid_data.major_y_lines) if grid_data.major_y_lines else set(grid_data.y_lines)
+
+        grid_color = NSColor.colorWithRed_green_blue_alpha_(*GRID_LINE_COLOR)
+        grid_color.setStroke()
 
         for cx in grid_data.x_lines:
             sx = (cx - vp_x) * zoom
             path = NSBezierPath.bezierPath()
-            path.setLineWidth_(GRID_LINE_WIDTH)
+            path.setLineWidth_(GRID_MAJOR_LINE_WIDTH if cx in major_x_set else GRID_LINE_WIDTH)
             path.moveToPoint_((sx, 0))
             path.lineToPoint_((sx, CANVAS_H))
             path.stroke()
@@ -94,7 +101,7 @@ class OverlayView(NSView):
         for cy in grid_data.y_lines:
             sy = CANVAS_H - ((cy - vp_y) * zoom)
             path = NSBezierPath.bezierPath()
-            path.setLineWidth_(GRID_LINE_WIDTH)
+            path.setLineWidth_(GRID_MAJOR_LINE_WIDTH if cy in major_y_set else GRID_LINE_WIDTH)
             path.moveToPoint_((0, sy))
             path.lineToPoint_((CANVAS_W, sy))
             path.stroke()
@@ -126,7 +133,6 @@ class OverlayView(NSView):
                 screen_x = (node["x"] - vp_x) * zoom
                 screen_y = CANVAS_H - ((node["y"] - vp_y) * zoom)
 
-                # label_text = f"{node['name']}  ({node['id']})"
                 label_text = f"{node['name']}"
                 label_w = len(label_text) * 8
 
@@ -191,18 +197,15 @@ def ws_listener(view):
         global latest_data, show_grid, grid_mode, grid_subdivisions, grid_precision_cell_size
         async with websockets.connect(
             "ws://localhost:8000/ws", ping_interval=20, ping_timeout=10
-            # pings are used to keep the overlay alive
         ) as ws:
 
             print("Overlay connected to backend")
             while True:
                 data = json.loads(await ws.recv())
 
-                # User Data
                 if "command" in data:
                     cmd = data["command"]
 
-                    # Grid commands
                     if cmd.get("type") == "grid":
                         if cmd.get("action") == "show":
                             show_grid = True
@@ -216,17 +219,14 @@ def ws_listener(view):
                             "setNeedsDisplay:", True, False
                         )
 
-                    # HUD commands
                     if cmd.get("type") == "hud":
                         hud_state["transcription"] = cmd.get("transcription")
                         hud_state["reasoning"] = cmd.get("reasoning")
                         hud_state["action"] = cmd.get("action")
-
                         view.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setNeedsDisplay:", True, False
                         )
 
-                # Plugin data
                 if "nodes" in data:
                     latest_data = data
                     view.performSelectorOnMainThread_withObject_waitUntilDone_(
@@ -234,6 +234,7 @@ def ws_listener(view):
                     )
 
     asyncio.run(listen())
+
 
 if __name__ == "__main__":
     app = NSApplication.sharedApplication()
@@ -266,7 +267,6 @@ if __name__ == "__main__":
     window.setContentView_(view)
     window.orderFrontRegardless()
 
-    # start WebSocket listener in background thread
     listener = threading.Thread(target=ws_listener, args=(view,), daemon=True)
     listener.start()
 
