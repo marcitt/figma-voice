@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 import math
 
@@ -7,13 +7,14 @@ from config import CANVAS_W, CANVAS_H, GRID_ALIGNMENT_SUBDIVISIONS, GRID_MAX_CEL
 
 @dataclass
 class GridData:
-    x_lines: List[float]  # vertical grid lines in canvas coordinates
-    y_lines: List[float]  # horizontal grid lines in canvas coordinates
+    x_lines: List[float]        # all vertical grid lines in canvas coordinates
+    y_lines: List[float]        # all horizontal grid lines in canvas coordinates
     grid_type: str
     cell_size: Optional[float] = None
+    major_x_lines: Optional[List[float]] = None  # alignment-level lines (drawn thick)
+    major_y_lines: Optional[List[float]] = None  # alignment-level lines (drawn thick)
 
     def cells(self):
-        # generates all cells from grid lines, numbering assigned later
         result = []
         for j in range(len(self.y_lines) - 1):
             for i in range(len(self.x_lines) - 1):
@@ -33,7 +34,6 @@ class GridData:
         return result
 
     def visible_cells(self, zoom, min_w=20, min_h=20, min_area=40):
-        # filters to cells large enough to be usable on screen, assigns contiguous numbers
         result = []
         n = 1
         for c in self.cells():
@@ -44,12 +44,6 @@ class GridData:
                 c["number"] = n
                 result.append(c)
                 n += 1
-
-        # only show numbers if few enough cells to be readable
-        # if len(result) > GRID_MAX_CELLS_FOR_LABELS:
-        #     for c in result:
-        #         c["number"] = None
-
         return result
 
 
@@ -102,25 +96,7 @@ def _cell_has_nodes(cell_x0, cell_x1, cell_y0, cell_y1, nodes):
 
 
 class NodeEdgeGrid:
-    # grid derived from node edges - cells are semantically grounded in canvas content
-
-    def __init__(self, subdivisions=GRID_ALIGNMENT_SUBDIVISIONS):
-        self.subdivisions = subdivisions
-
-    def _subdivide_empty_cells(self, x_lines, y_lines, nodes):
-        extra_x = set()
-        extra_y = set()
-        if self.subdivisions <= 1:
-            return x_lines, y_lines
-        for j in range(len(y_lines) - 1):
-            for i in range(len(x_lines) - 1):
-                x0, x1 = x_lines[i], x_lines[i + 1]
-                y0, y1 = y_lines[j], y_lines[j + 1]
-                if not _cell_has_nodes(x0, x1, y0, y1, nodes):
-                    for d in range(1, self.subdivisions):
-                        extra_x.add(x0 + (x1 - x0) * d / self.subdivisions)
-                        extra_y.add(y0 + (y1 - y0) * d / self.subdivisions)
-        return sorted(set(x_lines) | extra_x), sorted(set(y_lines) | extra_y)
+    # grid derived from node edges with no subdivision — used as the base for HybridGrid
 
     def compute(self, canvas_state: dict):
         vp = canvas_state.get("viewport")
@@ -146,14 +122,63 @@ class NodeEdgeGrid:
             y_coords.add(node["y"])
             y_coords.add(node["y"] + node["height"])
 
-        x_lines, y_lines = self._subdivide_empty_cells(
-            sorted(x_coords), sorted(y_coords), nodes
+        return GridData(
+            x_lines=sorted(x_coords),
+            y_lines=sorted(y_coords),
+            grid_type="node_edge",
         )
 
-        return GridData(x_lines=x_lines, y_lines=y_lines, grid_type="node_edge")
+
+class HybridGrid:
+    # alignment grid at base level, with uniform NxN fixed subcells within each alignment cell
+    # at subdivisions=1 behaves identically to NodeEdgeGrid
+    # at subdivisions=2+, each alignment cell is divided into NxN uniform subcells
+
+    def __init__(self, subdivisions: int = 2):
+        self.subdivisions = subdivisions
+
+    def compute(self, canvas_state: dict):
+        # step 1 — compute base alignment grid
+        base = NodeEdgeGrid().compute(canvas_state)
+        major_x = base.x_lines
+        major_y = base.y_lines
+
+        if self.subdivisions <= 1:
+            return GridData(
+                x_lines=major_x,
+                y_lines=major_y,
+                grid_type="hybrid",
+                major_x_lines=list(major_x),
+                major_y_lines=list(major_y),
+            )
+
+        # step 2 — add uniform subcell lines within each alignment cell
+        extra_x = set()
+        extra_y = set()
+
+        for i in range(len(major_x) - 1):
+            x0, x1 = major_x[i], major_x[i + 1]
+            for d in range(1, self.subdivisions):
+                extra_x.add(x0 + (x1 - x0) * d / self.subdivisions)
+
+        for j in range(len(major_y) - 1):
+            y0, y1 = major_y[j], major_y[j + 1]
+            for d in range(1, self.subdivisions):
+                extra_y.add(y0 + (y1 - y0) * d / self.subdivisions)
+
+        all_x = sorted(set(major_x) | extra_x)
+        all_y = sorted(set(major_y) | extra_y)
+
+        return GridData(
+            x_lines=all_x,
+            y_lines=all_y,
+            grid_type="hybrid",
+            major_x_lines=list(major_x),
+            major_y_lines=list(major_y),
+        )
 
 
 def get_grid(mode="alignment", subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, precision_cell_size=100):
     if mode == "precision":
         return FixedGrid(cell_size=precision_cell_size)
-    return NodeEdgeGrid(subdivisions=subdivisions)
+    return HybridGrid(subdivisions=subdivisions)

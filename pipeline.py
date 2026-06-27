@@ -26,7 +26,7 @@ with open("system_prompt.txt") as f:
     SYSTEM_PROMPT = f.read()
 
 history = []          # lean: layer names + command only — used for normal LLM calls
-detailed_history = [] # rich: full canvas state per turn — used for undo LLM fallback
+detailed_history = [] # rich: full canvas state per turn - used for undo LLM fallback
 canvas_state = {}
 text_queue = queue.Queue()  # input sources put text here - thread safe
 
@@ -36,7 +36,7 @@ grid_precision_index = GRID_PRECISION_DEFAULT_INDEX
 
 sleeping = False  # start awake
 
-WAKE_WORDS = ("hey figma", "wake up figma")
+WAKE_WORDS = ("hey figma", "wake up figma", "start listening")
 SLEEP_WORDS = ("sleep", "goodbye figma", "stop listening")
 
 if TRANSCRIBER == "deepgram":
@@ -439,6 +439,9 @@ def keyboard_worker():
 def dispatcher_worker():
     while True:
         text = text_queue.get()
+        # drain any queued items, keeping only the most recent
+        while not text_queue.empty():
+            text = text_queue.get_nowait()
         if text:
             command_worker(text)
 

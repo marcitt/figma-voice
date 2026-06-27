@@ -15,6 +15,11 @@ from config import GRID_ALIGNMENT_SUBDIVISIONS
 def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_subdivisions=GRID_ALIGNMENT_SUBDIVISIONS, grid_precision_cell_size=100):
     text_lower = text.lower()
     
+    
+    
+    if len(text_lower.split()) > 8 or len(text_lower) > 60:
+        return None  # fall through to LLM or not_recognised
+    
      # --- UNDO ---
     if "undo" in text_lower:
         return {"level": "system", "type": "undo"}
@@ -42,9 +47,9 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
     # this needs to come before "zoom to " to prevent it getting caught
     
     if re.search(r"zoom in$", text_lower):
-        return {"level": "figma", "type": "zoom", "zoom_delta": 1.5}
-    if re.search(r"zoom out$", text_lower):
         return {"level": "figma", "type": "zoom", "zoom_delta": 0.5}
+    if re.search(r"zoom out$", text_lower):
+        return {"level": "figma", "type": "zoom", "zoom_delta": -0.5}
     
     if any(p in text_lower for p in ("zoom to show everything", "zoom to fit", "zoom to context", "focus context")):
         print(f"[DEBUG] text_lower: {repr(text_lower)}")
@@ -82,8 +87,8 @@ def regex_command_processing(text, canvas_state, grid_mode="alignment", grid_sub
     # --- GRID MODE ---
     if any(p in text_lower for p in ("alignment grid", "snap grid", "object grid")):
         return {"level": "system", "type": "grid", "action": "mode_alignment"}
-    if any(p in text_lower for p in ("precision grid", "fixed grid", "uniform grid")):
-        return {"level": "system", "type": "grid", "action": "mode_precision"}
+    # if any(p in text_lower for p in ("precision grid", "fixed grid", "uniform grid")):
+    #     return {"level": "system", "type": "grid", "action": "mode_precision"}
 
     # --- GRID DETAIL ---
     if any(p in text_lower for p in ("more detail", "increase grid", "increase density", "increase grid density", "subdivide")):
